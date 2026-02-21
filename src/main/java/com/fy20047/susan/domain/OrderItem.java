@@ -1,5 +1,6 @@
 package com.fy20047.susan.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -35,6 +36,7 @@ public class OrderItem {
     private Long id;
 
     // 關聯至訂單主檔
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_group_id", nullable = false)
     private OrderGroup orderGroup;

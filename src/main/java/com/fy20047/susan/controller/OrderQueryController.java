@@ -2,11 +2,14 @@ package com.fy20047.susan.controller;
 
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
+import com.fy20047.susan.dto.ApiResponse;
 import com.fy20047.susan.dto.OrderGroupDto;
 import com.fy20047.susan.dto.OrderItemDto;
 import com.fy20047.susan.repository.OrderGroupRepository;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,22 +26,27 @@ public class OrderQueryController {
         this.orderGroupRepository = orderGroupRepository;
     }
 
-    // 本機驗證用：依暱稱查詢訂單與明細
+    // 依暱稱查詢訂單與明細（回傳 DTO）
     @GetMapping
-    public List<OrderGroupDto> getOrdersByNickname(@RequestParam("nickname") String nickname) {
-        // 去倉庫拿 Entity：這時拿出來的是帶有外鍵關聯的 OrderGroup 實體
-        List<OrderGroup> groups = orderGroupRepository.findByBuyerNicknameWithItems(nickname);
+    // 控制 HTTP 的狀態碼，讓前端瀏覽器的 Network 能抓到狀態，再加上 ApiResponse讓 Body 裡面放統一的 JSON 格式
+    public ResponseEntity<ApiResponse<List<OrderGroupDto>>> getOrdersByNickname(
+            @RequestParam("nickname") String nickname
+    ) {
+        String normalized = nickname == null ? "" : nickname.trim();
+        if (normalized.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("INVALID_REQUEST", "nickname 不能為空")); // nickname 空值回 400
+        }
 
-        // 準備一個 List 來裝等一下整理好的資料
+        List<OrderGroup> groups = orderGroupRepository.findByBuyerNicknameWithItems(normalized);
+        if (groups.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error("NOT_FOUND", "查無符合的訂單資料")); // 查無資料回 404
+        }
+
         List<OrderGroupDto> result = new ArrayList<>();
-
-        // 開始處理每一筆主檔
         for (OrderGroup group : groups) {
-
-            // 建立一個新的空白主檔
             OrderGroupDto dto = new OrderGroupDto();
-
-            // 對接資料
             dto.setId(group.getId());
             dto.setBuyerNickname(group.getBuyerNickname());
             dto.setGroupName(group.getGroupName());
@@ -46,10 +54,7 @@ public class OrderQueryController {
             dto.setTotalAmount(group.getTotalAmount());
             dto.setTotalBalance(group.getTotalBalance());
 
-            // 準備另一個 List 裝這個主檔底下的 OrderItem
             List<OrderItemDto> itemDtos = new ArrayList<>();
-
-            // 處理這個主檔底下的每一份內容
             for (OrderItem item : group.getItems()) {
                 OrderItemDto itemDto = new OrderItemDto();
                 itemDto.setId(item.getId());
@@ -68,6 +73,7 @@ public class OrderQueryController {
             dto.setItems(itemDtos);
             result.add(dto);
         }
-        return result;
+
+        return ResponseEntity.ok(ApiResponse.success(result)); // 成功回 ApiResponse 包裝的 DTO
     }
 }

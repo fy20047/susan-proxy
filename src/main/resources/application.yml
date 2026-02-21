@@ -2,7 +2,7 @@ spring:
   application:
     name: susan
   datasource:
-    url: ${DB_URL:jdbc:mariadb://localhost:3306/susan_proxy?characterEncoding=UTF-8&serverTimezone=Asia/Taipei}
+    url: ${DB_URL:jdbc:mariadb://localhost:3308/susan_proxy?characterEncoding=UTF-8&serverTimezone=Asia/Taipei}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root}
     driver-class-name: org.mariadb.jdbc.Driver

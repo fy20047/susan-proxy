@@ -8,7 +8,9 @@ spring:
     driver-class-name: org.mariadb.jdbc.Driver
   jpa:
     hibernate:
+      # 上線穩定後改為 none 或 validate 保護資料
       ddl-auto: update
+    # 在終端機印出執行的 SQL 語法，比較方便開發跟除錯
     show-sql: true
     properties:
       hibernate:

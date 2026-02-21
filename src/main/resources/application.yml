@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: susan
+  datasource:
+    url: ${DB_URL:jdbc:mariadb://localhost:3306/susan_proxy?characterEncoding=UTF-8&serverTimezone=Asia/Taipei}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: org.mariadb.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MariaDBDialect
+
+server:
+  port: 8080

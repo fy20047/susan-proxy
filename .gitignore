@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+frontend/src/example.tsx
+frontend/src/example_backup.tsx

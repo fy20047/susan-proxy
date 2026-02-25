@@ -41,9 +41,13 @@ public class OrderItem {
     @JoinColumn(name = "order_group_id", nullable = false)
     private OrderGroup orderGroup;
 
-    // 喊單序（CSV 原始欄位）
+    // 順位（CSV 原始欄位）
     @Column(name = "order_sn", length = 64)
     private String orderSn;
+
+    // 是否排到（勾選代表已排到）
+    @Column(name = "is_queued")
+    private Boolean queued = false;
 
     // 尾款日（CSV 可能不是純日期，先以字串保存）
     @Column(name = "balance_due_date", length = 32)
@@ -53,11 +57,11 @@ public class OrderItem {
     @Column(name = "deposit_paid_date", length = 32)
     private String depositPaidDate;
 
-    // 定金50%
+    // 定金80%
     @Column(name = "deposit_amount")
     private Integer depositAmount;
 
-    // 尾款50%
+    // 尾款20%
     @Column(name = "balance_amount")
     private Integer balanceAmount;
 

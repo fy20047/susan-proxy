@@ -59,6 +59,7 @@ public class OrderQueryController {
                 OrderItemDto itemDto = new OrderItemDto();
                 itemDto.setId(item.getId());
                 itemDto.setOrderSn(item.getOrderSn());
+                itemDto.setQueued(item.getQueued());
                 itemDto.setBalanceDueDate(item.getBalanceDueDate());
                 itemDto.setDepositPaidDate(item.getDepositPaidDate());
                 itemDto.setDepositAmount(item.getDepositAmount());

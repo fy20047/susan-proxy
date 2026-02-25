@@ -1,4 +1,4 @@
-package com.fy20047.susan.service;
+﻿package com.fy20047.susan.service;
 
 import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
@@ -21,6 +21,7 @@ import java.util.regex.Pattern;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +31,11 @@ public class SheetSyncService {
     private static final Pattern QUANTITY_PATTERN = Pattern.compile("\\*(\\d+)");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
-            "對帳", "定金50%", "尾款50%", "購買總額", "團友", "品項", "日幣原價", "已採購", "抵台", "出貨狀態"
+            "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "數量", "日幣原價", "已採購", "抵台", "出貨狀態"
     );
+
+    @Value("${app.google-sheet-url}")
+    private String googleSheetUrl;
 
     private final OrderGroupRepository orderGroupRepository;
 
@@ -77,14 +81,18 @@ public class SheetSyncService {
             });
 
             OrderItem item = new OrderItem();
-            item.setOrderSn(getValue(record, headerIndexMap, "喊單序"));
+            item.setOrderSn(getValue(record, headerIndexMap, "順位"));
+            boolean isQueued = parseBoolean(getValue(record, headerIndexMap, "是否排到"));
+            item.setQueued(isQueued);
             item.setBalanceDueDate(getValue(record, headerIndexMap, "尾款日"));
             item.setDepositPaidDate(getValue(record, headerIndexMap, "付定日"));
-            item.setDepositAmount(parseInteger(getValue(record, headerIndexMap, "定金50%"), 0));
-            item.setBalanceAmount(parseInteger(getValue(record, headerIndexMap, "尾款50%"), 0));
+            item.setDepositAmount(parseInteger(getValue(record, headerIndexMap, "定金80%"), 0));
+            item.setBalanceAmount(parseInteger(getValue(record, headerIndexMap, "尾款20%"), 0));
             item.setTotalAmount(parseInteger(getValue(record, headerIndexMap, "購買總額"), 0));
             item.setItemName(itemName);
-            item.setQuantity(extractQuantity(itemName));
+            item.setQuantity(parseInteger(getValue(record, headerIndexMap, "數量"), 1));
+            // 舊版邏輯保留：從品名抓數量（先不使用）
+            // item.setQuantity(extractQuantity(itemName));
             item.setJpyPrice(parseInteger(getValue(record, headerIndexMap, "日幣原價"), null));
 
             boolean isReconciled = parseBoolean(getValue(record, headerIndexMap, "對帳"));
@@ -141,10 +149,7 @@ public class SheetSyncService {
         }
     }
 
-    /**
-     * 從原始品名字串中，萃取出購買數量。
-     * 規則：尋找 "*數字" 的格式。若無，預設為 1。
-     */
+    // 從原始品名字串中，萃取出購買數量。規則：尋找 "*數字" 的格式。若無，預設為 1
     public Integer extractQuantity(String rawItemName) {
         if (rawItemName == null || rawItemName.trim().isEmpty()) {
             return 1;

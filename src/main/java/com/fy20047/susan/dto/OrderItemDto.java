@@ -6,6 +6,7 @@ public class OrderItemDto {
 
     private Long id;
     private String orderSn;
+    private Boolean queued;
     private String balanceDueDate;
     private String depositPaidDate;
     private Integer depositAmount;
@@ -30,6 +31,14 @@ public class OrderItemDto {
 
     public void setOrderSn(String orderSn) {
         this.orderSn = orderSn;
+    }
+
+    public Boolean getQueued() {
+        return queued;
+    }
+
+    public void setQueued(Boolean queued) {
+        this.queued = queued;
     }
 
     public String getBalanceDueDate() {

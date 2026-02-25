@@ -17,6 +17,6 @@
     "noUnusedParameters": true
   },
   "include": ["src"],
-  "exclude": ["src/example.tsx"],
+  "exclude": ["src/example.tsx", "src/example_backup.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

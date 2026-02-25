@@ -3,3 +3,4 @@ dist/
 .env
 .env.local
 src/example.tsx
+src/example_backup.tsx

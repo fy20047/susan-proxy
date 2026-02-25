@@ -25,26 +25,36 @@ public class OrderQueryController {
         this.orderGroupRepository = orderGroupRepository;
     }
 
-    // 依暱稱查詢訂單與明細（回傳 DTO）
     @GetMapping
-    // 控制 HTTP 的狀態碼，讓前端瀏覽器的 Network 能抓到狀態，再加上 ApiResponse讓 Body 裡面放統一的 JSON 格式
     public ResponseEntity<ApiResponse<List<OrderGroupDto>>> getOrdersByNickname(
             @RequestParam("nickname") String nickname
     ) {
         String normalized = nickname == null ? "" : nickname.trim();
         if (normalized.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("INVALID_REQUEST", "nickname 不能為空")); // nickname 空值回 400
+                    .body(ApiResponse.error("INVALID_REQUEST", "nickname 不能為空"));
         }
 
         List<OrderGroup> groups = orderGroupRepository.findByBuyerNicknameWithItems(normalized);
         if (groups.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(ApiResponse.error("NOT_FOUND", "查無符合的訂單資料")); // 查無資料回 404
+                    .body(ApiResponse.error("NOT_FOUND", "查無相關訂單"));
+        }
+
+        // 以大小寫完全相同為準，避免資料庫預設不分大小寫
+        List<OrderGroup> exactGroups = new ArrayList<>();
+        for (OrderGroup group : groups) {
+            if (normalized.equals(group.getBuyerNickname())) {
+                exactGroups.add(group);
+            }
+        }
+        if (exactGroups.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error("NOT_FOUND", "查無相關訂單"));
         }
 
         List<OrderGroupDto> result = new ArrayList<>();
-        for (OrderGroup group : groups) {
+        for (OrderGroup group : exactGroups) {
             OrderGroupDto dto = new OrderGroupDto();
             dto.setId(group.getId());
             dto.setBuyerNickname(group.getBuyerNickname());
@@ -59,6 +69,7 @@ public class OrderQueryController {
                 itemDto.setId(item.getId());
                 itemDto.setOrderSn(item.getOrderSn());
                 itemDto.setQueued(item.getQueued());
+                itemDto.setCheckedIn(item.getCheckedIn());
                 itemDto.setBalanceDueDate(item.getBalanceDueDate());
                 itemDto.setDepositPaidDate(item.getDepositPaidDate());
                 itemDto.setDepositAmount(item.getDepositAmount());
@@ -74,6 +85,6 @@ public class OrderQueryController {
             result.add(dto);
         }
 
-        return ResponseEntity.ok(ApiResponse.success(result)); // 成功回 ApiResponse 包裝的 DTO
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 }

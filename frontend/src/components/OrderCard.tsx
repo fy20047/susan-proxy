@@ -1,13 +1,14 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { ChevronDown, ChevronUp, Gift, Package } from "lucide-react";
 import { OrderView } from "../types";
 import { getItemStatusClass, getOrderStatusClass } from "../status";
 
 type OrderCardProps = {
   order: OrderView;
+  showStatus: boolean;
 };
 
-export default function OrderCard({ order }: OrderCardProps) {
+export default function OrderCard({ order, showStatus }: OrderCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const actualTotalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -39,13 +40,15 @@ export default function OrderCard({ order }: OrderCardProps) {
         </div>
 
         <div className="flex items-center justify-between w-full md:w-auto gap-4 border-t-2 md:border-t-0 border-dashed border-[#2C1E16] pt-3 md:pt-0 mt-2 md:mt-0">
-          <span
-            className={`px-3 py-1 font-bold border-2 border-[#2C1E16] text-sm md:text-base shadow-[2px_2px_0px_#2C1E16] ${getOrderStatusClass(
-              order.statusCode
-            )}`}
-          >
-            {order.status}
-          </span>
+          {showStatus && (
+            <span
+              className={`px-3 py-1 font-bold border-2 border-[#2C1E16] text-sm md:text-base shadow-[2px_2px_0px_#2C1E16] ${getOrderStatusClass(
+                order.statusCode
+              )}`}
+            >
+              {order.status}
+            </span>
+          )}
           <button className="p-1 bg-[#EBE3CC] border-2 border-[#2C1E16] hover:bg-[#D9A036] transition-colors flex-shrink-0">
             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </button>
@@ -73,8 +76,7 @@ export default function OrderCard({ order }: OrderCardProps) {
                   </div>
                 </div>
                 <div className="font-bold mt-1 md:mt-0 text-right whitespace-nowrap text-[#2A5C5B]">
-                  NT$ {item.totalAmount.toLocaleString()}{" "}
-                  <span className="text-xs">×{item.quantity}</span>
+                  NT$ {item.totalAmount.toLocaleString()} <span className="text-xs">×{item.quantity}</span>
                 </div>
               </div>
             ))}
@@ -103,9 +105,7 @@ export default function OrderCard({ order }: OrderCardProps) {
 
                 <div className="flex justify-between items-center gap-4 bg-[#BC4A3C] text-[#EBE3CC] p-2 mt-1 border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] transform -rotate-1 hover:rotate-0 transition-transform">
                   <span className="font-black text-base md:text-lg tracking-wider">取付尾款</span>
-                  <span className="font-black text-lg md:text-xl">
-                    NT$ {balance.toLocaleString()}
-                  </span>
+                  <span className="font-black text-lg md:text-xl">NT$ {balance.toLocaleString()}</span>
                 </div>
               </div>
             </div>

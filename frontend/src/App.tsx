@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { AlertCircle, ArrowLeft, Package, Search, ShoppingBag } from "lucide-react";
 import { fetchOrders } from "./api/orders";
 import OrderCard from "./components/OrderCard";
@@ -20,27 +20,29 @@ export default function App() {
 
     const label = toOrderStatusLabel(activeTab);
 
-    return orders
-      .map((order) => {
-        const items = order.items.filter((item) => item.statusCode === activeTab);
-        if (items.length === 0) return null;
+    return orders.reduce<OrderView[]>((acc, order) => {
+      const items = order.items.filter((item) => item.statusCode === activeTab);
+      if (items.length === 0) return acc;
 
-        const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0);
-        const depositAmount = items.reduce((sum, item) => sum + item.depositAmount, 0);
-        const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
+      const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0);
+      const depositAmount = items.reduce((sum, item) => sum + item.depositAmount, 0);
+      const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
 
-        return {
-          ...order,
-          statusCode: activeTab,
-          status: label,
-          items,
-          totalAmount,
-          depositAmount,
-          balanceAmount
-        };
-      })
-      .filter((order): order is OrderView => order !== null);
+      acc.push({
+        ...order,
+        statusCode: activeTab,
+        status: label,
+        items,
+        totalAmount,
+        depositAmount,
+        balanceAmount
+      });
+      return acc;
+    }, []);
   }, [orders, activeTab]);
+
+  const showStatus = activeTab !== "ALL";
+  const emptyLabel = activeTab === "ALL" ? "全部" : toOrderStatusLabel(activeTab);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +72,7 @@ export default function App() {
 
   return (
     <div
-      className="min-h-screen font-serif bg-[#EBE3CC] text-[#2C1E16]"
+      className="min-h-screen font-serif bg-[#EBE3CC] text-[#2C1E16] selection:bg-[#BC4A3C] selection:text-[#EBE3CC]"
       style={{
         backgroundImage: "radial-gradient(#D5CBB3 1px, transparent 1px)",
         backgroundSize: "20px 20px"
@@ -121,14 +123,12 @@ export default function App() {
                 )}
               </button>
 
-              {error && (
+              {error ? (
                 <div className="mt-6 flex items-start gap-2 text-[#BC4A3C] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
                   <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
                   <p className="text-sm font-bold leading-relaxed">{error}</p>
                 </div>
-              )}
-
-              {!error && (
+              ) : (
                 <div className="mt-6 flex items-start gap-2 text-[#BC4A3C] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
                   <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
                   <p className="text-sm font-bold leading-relaxed">
@@ -156,10 +156,10 @@ export default function App() {
             </button>
             <div className="text-right">
               <h2 className="text-2xl md:text-3xl font-black flex items-center gap-2 mt-2">
-                『{" "}
+                『
                 <span className="text-[#BC4A3C] underline decoration-[#D9A036] decoration-4 underline-offset-4">
                   {currentSearchName}
-                </span>{" "}
+                </span>
                 』的訂單紀錄
               </h2>
             </div>
@@ -188,18 +188,15 @@ export default function App() {
 
           <div>
             {filteredOrders.length > 0 ? (
-              filteredOrders.map((order) => <OrderCard key={order.id} order={order} />)
+              filteredOrders.map((order) => (
+                <OrderCard key={order.id} order={order} showStatus={showStatus} />
+              ))
             ) : (
               <div className="text-center py-16 bg-white border-4 border-dashed border-[#2C1E16]">
                 <Package size={48} className="mx-auto mb-4 text-[#D9A036] opacity-50" />
-                <h3 className="text-xl font-black text-[#2C1E16] mb-2">
-                  查無相關狀態的訂單
-                </h3>
+                <h3 className="text-xl font-black text-[#2C1E16] mb-2">查無相關狀態的訂單</h3>
                 <p className="font-bold text-[#2A5C5B]">
-                  目前「
-                  {STATUS_FILTERS.find((status) => status.key === activeTab)?.label ??
-                    "全部"}
-                  」分類下沒有任何紀錄喔！
+                  目前「{emptyLabel}」分類下沒有任何紀錄喔！
                 </p>
               </div>
             )}

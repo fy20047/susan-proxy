@@ -1,4 +1,4 @@
-export type ApiError = {
+﻿export type ApiError = {
   code: string;
   message: string;
 };
@@ -19,21 +19,14 @@ export type ItemStatusCode =
   | "SHIPPED";
 
 export type OrderStatus =
-  | "已喊單"
+  | "已登記"
   | "待匯定"
   | "待購入"
   | "運送中"
-  | "抵台待出貨"
-  | "已出貨"
-  | "已取消";
-
-export type ItemStatusLabel =
-  | "已喊單"
-  | "待匯定"
-  | "待購入"
-  | "運送中"
-  | "抵台待出貨"
+  | "已抵台待出貨"
   | "已出貨";
+
+export type ItemStatusLabel = OrderStatus;
 
 export type ApiOrderItem = {
   id: number;

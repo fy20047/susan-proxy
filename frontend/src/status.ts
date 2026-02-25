@@ -1,4 +1,4 @@
-import { ApiOrderItem, ItemStatusCode, ItemStatusLabel, OrderStatus } from "./types";
+﻿import { ApiOrderItem, ItemStatusCode, ItemStatusLabel, OrderStatus } from "./types";
 
 export type StatusFilter = {
   key: ItemStatusCode | "ALL";
@@ -7,11 +7,11 @@ export type StatusFilter = {
 
 export const STATUS_FILTERS: StatusFilter[] = [
   { key: "ALL", label: "全部" },
-  { key: "REGISTERED", label: "已喊單" },
+  { key: "REGISTERED", label: "已登記" },
   { key: "PENDING_DEPOSIT", label: "待匯定" },
   { key: "PENDING_PURCHASE", label: "待購入" },
   { key: "IN_TRANSIT", label: "運送中" },
-  { key: "ARRIVED", label: "抵台待出貨" },
+  { key: "ARRIVED", label: "已抵台待出貨" },
   { key: "SHIPPED", label: "已出貨" }
 ];
 
@@ -33,12 +33,12 @@ export function toItemStatusLabel(code?: ItemStatusCode): ItemStatusLabel {
     case "IN_TRANSIT":
       return "運送中";
     case "ARRIVED":
-      return "抵台待出貨";
+      return "已抵台待出貨";
     case "SHIPPED":
       return "已出貨";
     case "REGISTERED":
     default:
-      return "已喊單";
+      return "已登記";
   }
 }
 
@@ -82,7 +82,8 @@ export function getOrderStatusClass(code: ItemStatusCode): string {
 export function getItemStatusClass(status: ItemStatusLabel): string {
   switch (status) {
     case "已出貨":
-    case "抵台待出貨":
+      return "text-[10px] md:text-xs px-1.5 py-0.5 border border-[#2C1E16] font-bold bg-[#2C1E16] text-[#EBE3CC] shadow-[1px_1px_0px_#2C1E16] flex-shrink-0";
+    case "已抵台待出貨":
       return "text-[10px] md:text-xs px-1.5 py-0.5 border border-[#2C1E16] font-bold bg-[#BC4A3C] text-[#EBE3CC] shadow-[1px_1px_0px_#2C1E16] flex-shrink-0";
     case "運送中":
       return "text-[10px] md:text-xs px-1.5 py-0.5 border border-[#2C1E16] font-bold bg-[#5B8266] text-[#EBE3CC] shadow-[1px_1px_0px_#2C1E16] flex-shrink-0";
@@ -90,7 +91,7 @@ export function getItemStatusClass(status: ItemStatusLabel): string {
       return "text-[10px] md:text-xs px-1.5 py-0.5 border border-[#2C1E16] font-bold bg-[#2A5C5B] text-[#EBE3CC] shadow-[1px_1px_0px_#2C1E16] flex-shrink-0";
     case "待匯定":
       return "text-[10px] md:text-xs px-1.5 py-0.5 border border-[#2C1E16] font-bold bg-[#D9A036] text-[#2C1E16] shadow-[1px_1px_0px_#2C1E16] flex-shrink-0";
-    case "已喊單":
+    case "已登記":
     default:
       return "text-[10px] md:text-xs px-1.5 py-0.5 border border-[#2C1E16] font-bold bg-[#EBE3CC] text-[#2C1E16] shadow-[1px_1px_0px_#2C1E16] flex-shrink-0";
   }

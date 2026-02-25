@@ -1,4 +1,4 @@
-import { ApiOrderGroup, OrderItemView, OrderView } from "./types";
+﻿import { ApiOrderGroup, OrderItemView, OrderView } from "./types";
 import { deriveOrderStatusCode, toItemStatusLabel, toOrderStatusLabel } from "./status";
 
 export function buildOrderView(group: ApiOrderGroup): OrderView {
@@ -18,14 +18,8 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
   });
 
   const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0);
-  const depositAmount = group.items.reduce(
-    (sum, item) => sum + (item.depositAmount ?? 0),
-    0
-  );
-  const balanceAmount = group.items.reduce(
-    (sum, item) => sum + (item.balanceAmount ?? 0),
-    0
-  );
+  const depositAmount = items.reduce((sum, item) => sum + item.depositAmount, 0);
+  const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
 
   const statusCode = deriveOrderStatusCode(group.items);
   return {

@@ -73,15 +73,16 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
                   </div>
                   <div className="font-bold leading-tight text-[#2C1E16]">
                     {item.name}
+                    <span className="ml-2">×{item.quantity}</span>
                     {item.orderSn && (
                       <span className="ml-2 text-xs text-[#2C1E16]">
-                        【順位：{item.orderSn}】
+                        【順位：{item.orderSn} ({item.queued ? "目前已排到" : "目前尚未排到"})】
                       </span>
                     )}
                   </div>
                 </div>
                 <div className="font-bold mt-1 md:mt-0 text-right whitespace-nowrap text-[#2A5C5B]">
-                  NT$ {item.totalAmount.toLocaleString()} <span className="text-xs">×{item.quantity}</span>
+                  NT$ {item.totalAmount.toLocaleString()}
                 </div>
               </div>
             ))}

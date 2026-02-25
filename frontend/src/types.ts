@@ -31,6 +31,7 @@ export type ItemStatusLabel = OrderStatus;
 export type ApiOrderItem = {
   id: number;
   orderSn?: string;
+  queued?: boolean;
   balanceDueDate?: string;
   depositPaidDate?: string;
   depositAmount?: number;
@@ -56,6 +57,7 @@ export type OrderItemView = {
   id: number;
   name: string;
   orderSn?: string;
+  queued?: boolean;
   quantity: number;
   totalAmount: number;
   depositAmount: number;

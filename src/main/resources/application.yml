@@ -1,9 +1,6 @@
 ﻿app:
   google-sheet-url: ${GOOGLE_SHEET_URL:}
 
-app:
-  google-sheet-url: ${GOOGLE_SHEET_URL:}
-
 spring:
   application:
     name: susan

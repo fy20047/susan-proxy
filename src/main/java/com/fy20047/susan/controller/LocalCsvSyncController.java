@@ -20,7 +20,7 @@ public class LocalCsvSyncController {
     // 設定預設測試用的 CSV 檔案路徑
     // 發送請求時沒有特別指定要讀哪個檔案，會自動去專案資料夾底下找這份檔案
     private static final String DEFAULT_SAMPLE_PATH =
-            "src/main/resources/sample-data/代購資料 - 13對帳用-0107-10東京連線.csv";
+            "src/main/resources/sample-data/13對帳用-0107-10東京連線.csv";
 
     private final SheetSyncService sheetSyncService;
 

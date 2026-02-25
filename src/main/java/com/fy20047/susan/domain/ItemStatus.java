@@ -2,7 +2,7 @@ package com.fy20047.susan.domain;
 
 // 商品狀態列舉，用於對應 CSV 狀態欄位的轉換結果
 public enum ItemStatus {
-    // 已登記：有品項名稱，未採購未對帳
+    // 已喊單：有品項名稱，未採購未對帳
     REGISTERED,
     // 待匯定：已採購，未對帳
     PENDING_DEPOSIT,

@@ -7,6 +7,7 @@ public class OrderItemDto {
     private Long id;
     private String orderSn;
     private Boolean queued;
+    private Boolean checkedIn;
     private String balanceDueDate;
     private String depositPaidDate;
     private Integer depositAmount;
@@ -39,6 +40,14 @@ public class OrderItemDto {
 
     public void setQueued(Boolean queued) {
         this.queued = queued;
+    }
+
+    public Boolean getCheckedIn() {
+        return checkedIn;
+    }
+
+    public void setCheckedIn(Boolean checkedIn) {
+        this.checkedIn = checkedIn;
     }
 
     public String getBalanceDueDate() {

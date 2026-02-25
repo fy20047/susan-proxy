@@ -45,6 +45,10 @@ public class OrderItem {
     @Column(name = "order_sn", length = 64)
     private String orderSn;
 
+    // 是否報到（勾選代表已報到）
+    @Column(name = "is_checked_in")
+    private Boolean checkedIn = false;
+
     // 是否排到（勾選代表已排到）
     @Column(name = "is_queued")
     private Boolean queued = false;

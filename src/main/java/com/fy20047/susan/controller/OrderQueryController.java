@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/orders")
-// 把從倉庫拿來的 Entity 放進定義好的 DTO 裡
 public class OrderQueryController {
 
     private final OrderGroupRepository orderGroupRepository;

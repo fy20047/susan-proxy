@@ -1,4 +1,4 @@
-﻿package com.fy20047.susan.service;
+package com.fy20047.susan.service;
 
 import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
@@ -84,6 +84,8 @@ public class SheetSyncService {
             item.setOrderSn(getValue(record, headerIndexMap, "順位"));
             boolean isQueued = parseBoolean(getValue(record, headerIndexMap, "是否排到"));
             item.setQueued(isQueued);
+            boolean isCheckedIn = parseBoolean(getValue(record, headerIndexMap, "報到"));
+            item.setCheckedIn(isCheckedIn);
             item.setBalanceDueDate(getValue(record, headerIndexMap, "尾款日"));
             item.setDepositPaidDate(getValue(record, headerIndexMap, "付定日"));
             item.setDepositAmount(parseInteger(getValue(record, headerIndexMap, "定金80%"), 0));

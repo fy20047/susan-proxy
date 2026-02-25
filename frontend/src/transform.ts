@@ -9,6 +9,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
       name: item.itemName,
       orderSn: item.orderSn,
       queued: item.queued ?? false,
+      checkedIn: item.checkedIn ?? false,
       quantity: item.quantity ?? 1,
       totalAmount: item.totalAmount ?? 0,
       depositAmount: item.depositAmount ?? 0,

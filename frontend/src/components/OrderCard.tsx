@@ -76,7 +76,15 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
                     <span className="ml-2">×{item.quantity}</span>
                     {item.orderSn && (
                       <span className="ml-2 text-xs text-[#2C1E16]">
-                        【順位：{item.orderSn} ({item.queued ? "目前已排到" : "目前尚未排到"})】
+                        {"【"}
+                        {!item.checkedIn && (
+                          <span className="font-bold text-[#BC4A3C]">⚠️您尚未報到，請盡速登記資料⚠️</span>
+                        )}
+                        {"順位："}
+                        {item.orderSn}
+                        {" ("}
+                        {item.queued ? "目前已排到" : "目前尚未排到"}
+                        {")】"}
                       </span>
                     )}
                   </div>

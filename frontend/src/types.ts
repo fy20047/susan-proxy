@@ -32,6 +32,7 @@ export type ApiOrderItem = {
   id: number;
   orderSn?: string;
   queued?: boolean;
+  checkedIn?: boolean;
   balanceDueDate?: string;
   depositPaidDate?: string;
   depositAmount?: number;
@@ -58,6 +59,7 @@ export type OrderItemView = {
   name: string;
   orderSn?: string;
   queued?: boolean;
+  checkedIn?: boolean;
   quantity: number;
   totalAmount: number;
   depositAmount: number;

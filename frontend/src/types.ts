@@ -55,6 +55,7 @@ export type ApiOrderGroup = {
 export type OrderItemView = {
   id: number;
   name: string;
+  orderSn?: string;
   quantity: number;
   totalAmount: number;
   depositAmount: number;

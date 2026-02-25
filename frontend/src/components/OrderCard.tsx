@@ -31,7 +31,7 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-sm md:text-base font-bold text-[#2A5C5B]">
-            <span>有效購買：{actualTotalItems} 件</span>
+            <span>訂單總數：{actualTotalItems} 件</span>
             <span className="text-[#2C1E16]">|</span>
             <span className="text-[#BC4A3C] font-black">
               總金額：NT$ {actualTotalAmount.toLocaleString()}
@@ -73,6 +73,11 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
                   </div>
                   <div className="font-bold leading-tight text-[#2C1E16]">
                     {item.name}
+                    {item.orderSn && (
+                      <span className="ml-2 text-xs text-[#2C1E16]">
+                        【順位：{item.orderSn}】
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="font-bold mt-1 md:mt-0 text-right whitespace-nowrap text-[#2A5C5B]">

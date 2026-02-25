@@ -1,3 +1,9 @@
+﻿app:
+  google-sheet-url: ${GOOGLE_SHEET_URL:}
+
+app:
+  google-sheet-url: ${GOOGLE_SHEET_URL:}
+
 spring:
   application:
     name: susan
@@ -8,9 +14,9 @@ spring:
     driver-class-name: org.mariadb.jdbc.Driver
   jpa:
     hibernate:
-      # 上線穩定後改為 none 或 validate 保護資料
+      # 為了開發便利使用 update，正式上線改為 none 或 validate
       ddl-auto: update
-    # 在終端機印出執行的 SQL 語法，比較方便開發跟除錯
+    # 開啟 SQL log，方便除錯
     show-sql: true
     properties:
       hibernate:

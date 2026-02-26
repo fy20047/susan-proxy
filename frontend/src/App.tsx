@@ -84,27 +84,25 @@ export default function App() {
         <div className="flex flex-col items-center justify-center min-h-screen p-6">
           <div className="w-full max-w-lg">
             <header className="mb-10 text-center">
-              <div className="flex justify-center mb-4 ">
-                <img
-                    src={logo}
-                    alt="Susan 代購系統 Logo"
-                    className="h-60 w-auto object-contain"
-                />
-              </div>
-              <div className="inline-block border-4 border-[#2C1E16] bg-white p-6 shadow-[8px_8px_0px_#2C1E16] relative">
+              {/*<div className="inline-block border-4 border-[#2C1E16] bg-white p-6 shadow-[8px_8px_0px_#2C1E16] relative">*/}
                 <div className="absolute top-0 left-0 w-full h-2 bg-[#BC4A3C]"></div>
-
                 <h1 className="text-3xl md:text-4xl font-black tracking-widest mb-3 flex flex-col items-center gap-2">
-                  <ShoppingBag size={60} className="text-[#BC4A3C]" />
+                  <div className="flex justify-center">
+                    <img
+                        src={logo}
+                        alt="Susan 代購系統 Logo"
+                        className="h-60 w-auto object-contain"
+                    />
+                  </div>
                   {/*<span>俗三連線中</span>*/}
                 </h1>
                 {/*<p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-t-2 border-dashed border-[#2C1E16] pt-2">*/}
                 {/*  🇯🇵 日本動漫代購 🇯🇵*/}
                 {/*</p>*/}
-                <p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-[#2C1E16] pt-2">
+                <p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-[#2C1E16]">
                   🇯🇵 日本動漫代購 🇯🇵
                 </p>
-              </div>
+              {/*</div>*/}
             </header>
 
             <form
@@ -142,11 +140,22 @@ export default function App() {
                   <p className="text-sm font-bold leading-relaxed">{error}</p>
                 </div>
               ) : (
-                <div className="mt-6 flex items-start gap-2 text-[#BC4A3C] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
-                  <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
-                  <p className="text-sm font-bold leading-relaxed">
-                    注意：請輸入您在群組喊單的完整暱稱。如有變更暱稱，請務必聯繫官方LINE進行登記，以免查詢不到您的訂單。
-                  </p>
+                <div className="mt-6 flex flex-col gap-1 text-[#BC4A3C] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
+                  {/* 第一行 */}
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                    <p className="text-sm font-bold leading-relaxed">
+                      注意：請輸入您在群組喊單的 <strong>完整暱稱</strong> 。
+                    </p>
+                  </div>
+
+                  {/* 第二行 */}
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                    <p className="text-sm font-bold leading-relaxed">
+                      如有變更暱稱，請務必聯繫官方LINE進行登記，以免查詢不到您的訂單。
+                    </p>
+                  </div>
                 </div>
               )}
             </form>

@@ -5,6 +5,7 @@ import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
 import com.fy20047.susan.repository.OrderGroupRepository;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
@@ -13,7 +14,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -24,6 +27,8 @@ import java.util.regex.Pattern;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -32,6 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SheetSyncService {
 
+    private static final Logger log = LoggerFactory.getLogger(SheetSyncService.class);
+    private static final List<String> SETTINGS_SHEET_NAMES = List.of("設定", "分頁");
     private static final Pattern QUANTITY_PATTERN = Pattern.compile("\\*(\\d+)");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
@@ -47,13 +54,11 @@ public class SheetSyncService {
         this.orderGroupRepository = orderGroupRepository;
     }
 
-    // CSV 同步主流程（無指定團名）
     @Transactional
     public void syncFromCsv(Path csvPath) {
         syncFromCsv(csvPath, null);
     }
 
-    // CSV 同步主流程（指定團名）
     @Transactional
     public void syncFromCsv(Path csvPath, String explicitGroupName) {
         String groupName = resolveGroupName(csvPath, explicitGroupName);
@@ -61,7 +66,7 @@ public class SheetSyncService {
         List<CSVRecord> records = readAllRecords(csvPath);
         int headerIndex = findHeaderIndex(records);
         if (headerIndex < 0) {
-            throw new IllegalStateException("找不到欄位表頭，請確認 CSV 是否包含必要欄位");
+            throw new IllegalStateException("找不到欄位表頭，請確認 CSV 欄位名稱是否正確。");
         }
 
         Map<String, Integer> headerIndexMap = buildHeaderIndex(records.get(headerIndex));
@@ -85,11 +90,13 @@ public class SheetSyncService {
             });
 
             OrderItem item = new OrderItem();
-            item.setOrderSn(getValue(record, headerIndexMap, "順位"));
-            boolean isQueued = parseBoolean(getValue(record, headerIndexMap, "是否排到"));
-            item.setQueued(isQueued);
-            boolean isCheckedIn = parseBoolean(getValue(record, headerIndexMap, "報到"));
-            item.setCheckedIn(isCheckedIn);
+            String orderSn = getValue(record, headerIndexMap, "順位");
+            if (isBlank(orderSn)) {
+                orderSn = getValue(record, headerIndexMap, "喊單序");
+            }
+            item.setOrderSn(orderSn);
+            item.setQueued(parseBoolean(getValue(record, headerIndexMap, "是否排到")));
+            item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, "報到")));
             item.setBalanceDueDate(getValue(record, headerIndexMap, "尾款日"));
             item.setDepositPaidDate(getValue(record, headerIndexMap, "付定日"));
             item.setDepositAmount(parseInteger(getValue(record, headerIndexMap, "定金80%"), 0));
@@ -97,7 +104,7 @@ public class SheetSyncService {
             item.setTotalAmount(parseInteger(getValue(record, headerIndexMap, "購買總額"), 0));
             item.setItemName(itemName);
             item.setQuantity(parseInteger(getValue(record, headerIndexMap, "數量"), 1));
-            // 舊版邏輯保留：從品名抓數量（先不使用）
+            // 如果未來賣家又把數量塞回品項，可以改回這行。
             // item.setQuantity(extractQuantity(itemName));
             item.setJpyPrice(parseInteger(getValue(record, headerIndexMap, "日幣原價"), null));
 
@@ -110,7 +117,6 @@ public class SheetSyncService {
             group.addItem(item);
         }
 
-        // 依團名整批刪除舊資料，再重建
         if (!isBlank(groupName)) {
             List<OrderGroup> existingGroups = orderGroupRepository.findByGroupName(groupName);
             if (!existingGroups.isEmpty()) {
@@ -121,7 +127,6 @@ public class SheetSyncService {
         orderGroupRepository.saveAll(groupByBuyer.values());
     }
 
-    // 依 Google Sheet Excel URL 同步（定時執行）
     @Scheduled(fixedRate = 300000)
     @Transactional
     public void syncFromGoogleSheetUrl() {
@@ -129,15 +134,37 @@ public class SheetSyncService {
             return;
         }
 
-        try (var inputStream = new URL(googleSheetUrl).openStream()) {
-            SheetRowListener listener = new SheetRowListener(orderGroupRepository);
+        byte[] excelBytes = readExcelBytes(googleSheetUrl);
+        Map<String, Boolean> visibility = readSheetVisibility(excelBytes);
+        Set<String> visibleSheets = null;
+        if (visibility != null) {
+            visibleSheets = new HashSet<>();
+            for (Map.Entry<String, Boolean> entry : visibility.entrySet()) {
+                if (Boolean.TRUE.equals(entry.getValue())) {
+                    String normalized = SheetNameNormalizer.normalize(entry.getKey());
+                    if (!normalized.isEmpty()) {
+                        visibleSheets.add(normalized);
+                    }
+                }
+            }
+            log.info("設定分頁白名單(正規化後): {}", visibleSheets);
+        }
+
+        try (var inputStream = new ByteArrayInputStream(excelBytes)) {
+            SheetRowListener listener = new SheetRowListener(orderGroupRepository, visibleSheets);
             EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
-        } catch (IOException e) {
+            if (visibleSheets != null) {
+                if (listener.getProcessedSheets().isEmpty()) {
+                    log.warn("設定分頁有設定，但未同步到任何分頁，略過清除舊資料");
+                } else {
+                    deleteGroupsNotIn(visibleSheets);
+                }
+            }
+        } catch (Exception e) {
             throw new IllegalStateException("Google Sheet Excel 讀取失敗：" + googleSheetUrl, e);
         }
     }
 
-    // 解析 CSV 的 TRUE/FALSE 字串為布林值（允許大小寫、空白）
     public boolean parseBoolean(String rawValue) {
         if (rawValue == null) {
             return false;
@@ -149,9 +176,7 @@ public class SheetSyncService {
         return TRUE_VALUES.contains(normalized);
     }
 
-    // 將四個狀態欄位轉成單一 ItemStatus
     public ItemStatus determineStatus(boolean isReconciled, boolean isPurchased, boolean isArrived, boolean isShipped) {
-        // 1. 最末端的狀態優先判斷（防呆）
         if (isShipped) {
             return ItemStatus.SHIPPED;
         }
@@ -159,7 +184,6 @@ public class SheetSyncService {
             return ItemStatus.ARRIVED;
         }
 
-        // 2. 十字交叉邏輯
         if (isPurchased && isReconciled) {
             return ItemStatus.IN_TRANSIT;
         } else if (isPurchased && !isReconciled) {
@@ -171,7 +195,6 @@ public class SheetSyncService {
         }
     }
 
-    // 從原始品名字串中，萃取出購買數量。規則：尋找 "*數字" 的格式。若無，預設為 1
     public Integer extractQuantity(String rawItemName) {
         if (rawItemName == null || rawItemName.trim().isEmpty()) {
             return 1;
@@ -185,7 +208,6 @@ public class SheetSyncService {
         return 1;
     }
 
-    // 讀取 CSV 全部列資料
     private List<CSVRecord> readAllRecords(Path csvPath) {
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setTrim(true)
@@ -200,7 +222,6 @@ public class SheetSyncService {
         }
     }
 
-    // 讀取 URL CSV 全部列資料
     private List<CSVRecord> readAllRecordsFromUrl(String csvUrl) {
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setTrim(true)
@@ -215,11 +236,10 @@ public class SheetSyncService {
         }
     }
 
-    // 尋找真正的表頭列（可跳過公告/說明列）
     private int findHeaderIndex(List<CSVRecord> records) {
         for (int i = 0; i < records.size(); i++) {
             CSVRecord record = records.get(i);
-            Set<String> headerSet = new java.util.HashSet<>();
+            Set<String> headerSet = new HashSet<>();
             for (String cell : record) {
                 String normalized = normalizeHeaderName(cell);
                 if (!normalized.isEmpty()) {
@@ -233,7 +253,6 @@ public class SheetSyncService {
         return -1;
     }
 
-    // 建立欄位名稱對應欄位索引
     private Map<String, Integer> buildHeaderIndex(CSVRecord headerRecord) {
         Map<String, Integer> indexMap = new HashMap<>();
         for (int i = 0; i < headerRecord.size(); i++) {
@@ -245,7 +264,6 @@ public class SheetSyncService {
         return indexMap;
     }
 
-    // 依欄位名稱取得資料（若不存在回傳空字串）
     private String getValue(CSVRecord record, Map<String, Integer> headerIndexMap, String headerName) {
         Integer index = headerIndexMap.get(headerName);
         if (index == null || index < 0 || index >= record.size()) {
@@ -254,7 +272,6 @@ public class SheetSyncService {
         return record.get(index);
     }
 
-    // 處理表頭文字（去 BOM、修剪空白）
     private String normalizeHeaderName(String raw) {
         if (raw == null) {
             return "";
@@ -266,7 +283,6 @@ public class SheetSyncService {
         return trimmed;
     }
 
-    // 解析整數（允許空值與逗號）
     private Integer parseInteger(String rawValue, Integer defaultValue) {
         if (rawValue == null) {
             return defaultValue;
@@ -286,7 +302,6 @@ public class SheetSyncService {
         return value == null || value.trim().isEmpty();
     }
 
-    // 若未指定團名，預設用檔名（不含副檔名）
     private String resolveGroupName(Path csvPath, String explicitGroupName) {
         if (!isBlank(explicitGroupName)) {
             return explicitGroupName.trim();
@@ -297,5 +312,66 @@ public class SheetSyncService {
             return fileName.substring(0, dotIndex);
         }
         return fileName;
+    }
+
+    private byte[] readExcelBytes(String url) {
+        try (var inputStream = new URL(url).openStream()) {
+            return inputStream.readAllBytes();
+        } catch (IOException e) {
+            throw new IllegalStateException("Google Sheet Excel 下載失敗：" + url, e);
+        }
+    }
+
+    private Map<String, Boolean> readSheetVisibility(byte[] excelBytes) {
+        for (String sheetName : SETTINGS_SHEET_NAMES) {
+            Map<String, Boolean> result = tryReadVisibility(excelBytes, sheetName);
+            if (result != null) {
+                return result;
+            }
+        }
+        log.info("找不到設定/分頁分頁或讀取失敗，將同步所有分頁");
+        return null;
+    }
+
+    private Map<String, Boolean> tryReadVisibility(byte[] excelBytes, String sheetName) {
+        try (var inputStream = new ByteArrayInputStream(excelBytes)) {
+            SheetVisibilityListener listener = new SheetVisibilityListener();
+            EasyExcel.read(inputStream, SheetVisibilityRow.class, listener)
+                    .sheet(sheetName)
+                    .headRowNumber(1)
+                    .doRead();
+            Map<String, Boolean> result = listener.getVisibilityBySheet();
+            if (result.isEmpty()) {
+                log.info("設定分頁 {} 為空，將同步所有分頁", sheetName);
+                return null;
+            }
+            log.info("使用設定分頁 {} 進行同步白名單", sheetName);
+            return result;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void deleteGroupsNotIn(Set<String> visibleSheets) {
+        if (visibleSheets == null) {
+            return;
+        }
+        List<OrderGroup> allGroups = orderGroupRepository.findAll();
+        if (allGroups.isEmpty()) {
+            return;
+        }
+
+        List<OrderGroup> toDelete = new ArrayList<>();
+        for (OrderGroup group : allGroups) {
+            String groupName = group.getGroupName();
+            String normalized = SheetNameNormalizer.normalize(groupName);
+            if (normalized.isEmpty() || !visibleSheets.contains(normalized)) {
+                toDelete.add(group);
+            }
+        }
+
+        if (!toDelete.isEmpty()) {
+            orderGroupRepository.deleteAll(toDelete);
+        }
     }
 }

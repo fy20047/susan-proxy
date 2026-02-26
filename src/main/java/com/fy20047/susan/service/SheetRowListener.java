@@ -19,20 +19,28 @@ import org.slf4j.LoggerFactory;
 public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
 
     private static final Logger log = LoggerFactory.getLogger(SheetRowListener.class);
-
+    private static final Set<String> SETTINGS_SHEET_NAMES = Set.of("設定", "分頁");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
             "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "日幣原價", "已採購", "出貨狀態"
     );
-
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
 
     private final OrderGroupRepository orderGroupRepository;
     private final Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
+    private final Set<String> processedSheets = new HashSet<>();
+    private int totalGroupsSaved = 0;
+    private final Set<String> visibleSheets;
     private String currentSheetName = "";
     private boolean validSheet = false;
+    private boolean skipCurrentSheet = false;
 
     public SheetRowListener(OrderGroupRepository orderGroupRepository) {
+        this(orderGroupRepository, null);
+    }
+
+    public SheetRowListener(OrderGroupRepository orderGroupRepository, Set<String> visibleSheets) {
         this.orderGroupRepository = orderGroupRepository;
+        this.visibleSheets = visibleSheets;
     }
 
     @Override
@@ -40,9 +48,15 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         currentSheetName = context.readSheetHolder().getSheetName();
         groupByBuyer.clear();
         validSheet = false;
+        skipCurrentSheet = shouldSkipSheet(currentSheetName);
+
+        if (skipCurrentSheet) {
+            log.info("略過分頁 {}", currentSheetName);
+            return;
+        }
 
         if (headMap == null || headMap.isEmpty()) {
-            log.warn("分頁 {} 找不到欄位表頭，將跳過。", currentSheetName);
+            log.warn("分頁 {} 找不到欄位表頭", currentSheetName);
             return;
         }
 
@@ -52,10 +66,12 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
                 headers.add(header.trim());
             }
         }
+
         if (!headers.containsAll(REQUIRED_HEADERS)) {
-            log.warn("分頁 {} 欄位表頭不完整，將跳過。實際欄位: {}", currentSheetName, headers);
+            log.warn("分頁 {} 欄位不足，略過同步，當前欄位: {}", currentSheetName, headers);
             return;
         }
+
         validSheet = true;
     }
 
@@ -67,7 +83,6 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
 
         String buyerNickname = safeString(row.getBuyerNickname());
         String itemName = safeString(row.getItemName());
-
         if (buyerNickname.isEmpty() || itemName.isEmpty()) {
             return;
         }
@@ -116,6 +131,30 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             orderGroupRepository.deleteAll(existingGroups);
         }
         orderGroupRepository.saveAll(groupByBuyer.values());
+        processedSheets.add(SheetNameNormalizer.normalize(currentSheetName));
+        totalGroupsSaved += groupByBuyer.size();
+    }
+
+    public Set<String> getProcessedSheets() {
+        return processedSheets;
+    }
+
+    public int getTotalGroupsSaved() {
+        return totalGroupsSaved;
+    }
+
+    private boolean shouldSkipSheet(String sheetName) {
+        if (sheetName != null && SETTINGS_SHEET_NAMES.contains(sheetName)) {
+            return true;
+        }
+        if (visibleSheets == null) {
+            return false;
+        }
+        String normalized = SheetNameNormalizer.normalize(sheetName);
+        if (normalized.isEmpty()) {
+            return true;
+        }
+        return !visibleSheets.contains(normalized);
     }
 
     private String safeString(String value) {

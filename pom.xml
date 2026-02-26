@@ -29,6 +29,7 @@
     <properties>
         <java.version>21</java.version>
         <commons-csv.version>1.10.0</commons-csv.version>
+        <easyexcel.version>4.0.3</easyexcel.version>
     </properties>
     <dependencies>
         <dependency>
@@ -49,6 +50,11 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-csv</artifactId>
             <version>${commons-csv.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>${easyexcel.version}</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

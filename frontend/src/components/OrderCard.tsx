@@ -63,36 +63,49 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
 
           <div className="space-y-3 mb-6">
             {order.items.map((item) => (
-              <div
-                key={item.id}
-                className="flex justify-between items-start md:items-center border-b-2 border-dashed border-[#2C1E16] pb-3 text-sm md:text-base"
-              >
-                <div className="flex items-start md:items-center gap-3 flex-1 pr-4">
-                  <div className="mt-0.5 md:mt-0">
-                    <span className={getItemStatusClass(item.status)}>{item.status}</span>
-                  </div>
-                  <div className="font-bold leading-tight text-[#2C1E16]">
-                    {item.name}
-                    <span className="ml-2">×{item.quantity}</span>
+                <div
+                    key={item.id}
+                    className="flex flex-col md:flex-row md:items-center justify-between border-b-2 border-dashed border-[#2C1E16] pb-4 md:pb-3 text-sm md:text-base gap-2 md:gap-0"
+                >
+                  {/* 左側與中間資訊區 */}
+                  <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 flex-1">
+
+                    {/* 1. 狀態標籤：手機版獨佔一行，電腦版排在最左邊 */}
+                    <div className="flex shrink-0">
+                      <span className={getItemStatusClass(item.status)}>{item.status}</span>
+                    </div>
+
+                    {/* 2. 品項與價格容器：關鍵修改處 */}
+                    <div className="flex justify-between items-start md:block flex-1">
+                      {/* 品項名稱與數量 */}
+                      <div className="font-bold text-[#2C1E16] text-base md:text-base">
+                        {item.name}
+                        <span className="ml-2 text-[#2A5C5B]">×{item.quantity}</span>
+                      </div>
+
+                      {/* 手機版價格：僅在 md 以下顯示 (hidden md:block 的反向操作) */}
+                      <div className="font-black text-[#2A5C5B] text-base md:hidden ml-2 whitespace-nowrap">
+                        NT$ {item.totalAmount.toLocaleString()}
+                      </div>
+                    </div>
+
+                    {/* 3. 順位與提醒：手機版加上背景色，電腦版恢復簡約 */}
                     {item.orderSn && (
-                      <span className="ml-2 text-xs text-[#2C1E16]">
-                        {"【"}
-                        {!item.checkedIn && (
-                          <span className="font-bold text-[#BC4A3C]">⚠️您尚未報到，請盡速登記資料⚠️</span>
-                        )}
-                        {"順位："}
-                        {item.orderSn}
-                        {" ("}
-                        {item.queued ? "目前已排到" : "目前尚未排到"}
-                        {")】"}
-                      </span>
+                        <div className="text-xs text-[#2C1E16] bg-[#F5F0E6] md:bg-transparent p-2 md:p-0 border-l-4 border-[#BC4A3C] md:border-none rounded-r">
+                          <span className="md:text-[#BC4A3C] md:font-bold">
+                            {!item.checkedIn && "⚠️您尚未報到，請盡速登記資料⚠️ | "}
+                            順位：{item.orderSn}
+                            <span className="ml-1">({item.queued ? "已排到" : "未排到"})</span>
+                          </span>
+                        </div>
                     )}
                   </div>
+
+                  {/* 4. 電腦版價格：僅在 md 以上顯示 */}
+                  <div className="hidden md:block font-black text-right text-[#2A5C5B] text-base md:ml-4 whitespace-nowrap">
+                    NT$ {item.totalAmount.toLocaleString()}
+                  </div>
                 </div>
-                <div className="font-bold mt-1 md:mt-0 text-right whitespace-nowrap text-[#2A5C5B]">
-                  NT$ {item.totalAmount.toLocaleString()}
-                </div>
-              </div>
             ))}
           </div>
 
@@ -104,7 +117,7 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
               </div>
             )}
 
-            <div className="w-full md:w-auto bg-white p-4 border-2 border-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] min-w-[260px]">
+            <div className="w-full md:w-full bg-white p-4 border-2 border-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] min-w-[234px]">
               <div className="flex flex-col font-bold text-[#2C1E16]">
                 <div className="flex justify-between gap-6 mb-1 text-[#2A5C5B] text-sm md:text-base">
                   <span>訂單總額</span>

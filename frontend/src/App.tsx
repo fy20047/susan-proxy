@@ -5,6 +5,8 @@ import OrderCard from "./components/OrderCard";
 import { STATUS_FILTERS, toOrderStatusLabel } from "./status";
 import { buildOrderView } from "./transform";
 import { ItemStatusCode, OrderView } from "./types";
+import logo from "./image/logo1.png";
+import icon from "./image/icon.png";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<"search" | "results">("search");
@@ -82,13 +84,24 @@ export default function App() {
         <div className="flex flex-col items-center justify-center min-h-screen p-6">
           <div className="w-full max-w-lg">
             <header className="mb-10 text-center">
+              <div className="flex justify-center mb-4 ">
+                <img
+                    src={logo}
+                    alt="Susan 代購系統 Logo"
+                    className="h-60 w-auto object-contain"
+                />
+              </div>
               <div className="inline-block border-4 border-[#2C1E16] bg-white p-6 shadow-[8px_8px_0px_#2C1E16] relative">
                 <div className="absolute top-0 left-0 w-full h-2 bg-[#BC4A3C]"></div>
+
                 <h1 className="text-3xl md:text-4xl font-black tracking-widest mb-3 flex flex-col items-center gap-2">
-                  <ShoppingBag size={40} className="text-[#BC4A3C]" />
-                  <span>俗三連線中</span>
+                  <ShoppingBag size={60} className="text-[#BC4A3C]" />
+                  {/*<span>俗三連線中</span>*/}
                 </h1>
-                <p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-t-2 border-dashed border-[#2C1E16] pt-2">
+                {/*<p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-t-2 border-dashed border-[#2C1E16] pt-2">*/}
+                {/*  🇯🇵 日本動漫代購 🇯🇵*/}
+                {/*</p>*/}
+                <p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-[#2C1E16] pt-2">
                   🇯🇵 日本動漫代購 🇯🇵
                 </p>
               </div>
@@ -147,20 +160,48 @@ export default function App() {
 
       {currentPage === "results" && (
         <div className="max-w-4xl mx-auto p-4 md:p-8 pt-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 border-b-4 border-[#2C1E16] pb-4 gap-4">
+          {/* 標題區域容器 */}
+          <div className="flex flex-row justify-between items-end mb-8 border-b-4 border-[#2C1E16] pb-4 relative w-full">
+
+            {/* 返回查詢按鈕 */}
             <button
-              onClick={() => setCurrentPage("search")}
-              className="flex items-center gap-2 font-bold px-4 py-2 bg-white border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] hover:bg-[#F5F0E6] transition-colors"
+                onClick={() => setCurrentPage("search")}
+                className="flex items-center gap-2 font-bold px-4 py-2 bg-white border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] hover:bg-[#F5F0E6] transition-colors shrink-0 z-20"
             >
-              <ArrowLeft size={18} /> 返回查詢
+              <ArrowLeft size={18} />
+              <span className="hidden xs:inline">返回查詢</span> {/* 窄手機可隱藏文字只留箭頭 */}
             </button>
-            <div className="text-right">
-              <h2 className="text-2xl md:text-3xl font-black flex items-center gap-2 mt-2">
-                『
-                <span className="text-[#BC4A3C] underline decoration-[#D9A036] decoration-4 underline-offset-4">
-                  {currentSearchName}
+            {/* 右側標題與圖示區塊 - 使用 flex-row 並根據螢幕尺寸切換順序 */}
+            <div className="flex flex-row items-end flex-1 justify-end">
+              {/* 1. 圖示容器：透過 order 控制位置 */}
+              <div className="
+                shrink-0
+                z-10
+                relative
+                -mb-[21px]            /* 負邊距讓圖示壓在黑線上 */
+                order-2
+              "><img
+                  src={icon}
+                  alt="訂單圖示"
+                  className="h-20 md:h-20 w-auto object-contain block"
+                />
+              </div>
+              {/* 2. 標題文字 */}
+              <h2 className="
+                text-2xl md:text-3xl
+                font-black
+                leading-tight
+                text-right
+                order-1
+                pr-1
+              ">
+                <span>
+                  『
+                  <span className="text-[#BC4A3C] underline decoration-[#D9A036] decoration-4 underline-offset-4">
+                    {currentSearchName}
+                  </span>
+                  』的紀錄
                 </span>
-                』的訂單紀錄
               </h2>
             </div>
           </div>

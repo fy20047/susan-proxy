@@ -95,6 +95,14 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             return newGroup;
         });
 
+        Integer bonus = parseInteger(row.getBonus());
+        if (bonus != null) {
+            int current = group.getBonusCount() == null ? 0 : group.getBonusCount();
+            if (bonus > current) {
+                group.setBonusCount(bonus);
+            }
+        }
+
         OrderItem item = new OrderItem();
         String orderSn = safeString(row.getOrderRank());
         if (orderSn.isEmpty()) {
@@ -178,6 +186,21 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
 
     private int defaultInt(Integer value, int defaultValue) {
         return value == null ? defaultValue : value;
+    }
+
+    private Integer parseInteger(String rawValue) {
+        if (rawValue == null) {
+            return null;
+        }
+        String normalized = rawValue.trim().replace(",", "");
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(normalized);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private ItemStatus determineStatus(boolean isReconciled, boolean isPurchased, boolean isArrived, boolean isShipped) {

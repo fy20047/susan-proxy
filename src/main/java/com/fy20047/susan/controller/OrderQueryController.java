@@ -62,6 +62,7 @@ public class OrderQueryController {
             dto.setLastUpdated(group.getLastUpdated());
             dto.setTotalAmount(group.getTotalAmount());
             dto.setTotalBalance(group.getTotalBalance());
+            dto.setBonusCount(group.getBonusCount());
 
             List<OrderItemDto> itemDtos = new ArrayList<>();
             for (OrderItem item : group.getItems()) {

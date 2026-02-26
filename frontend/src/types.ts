@@ -51,6 +51,7 @@ export type ApiOrderGroup = {
   lastUpdated?: string;
   totalAmount?: number;
   totalBalance?: number;
+  bonusCount?: number;
   items: ApiOrderItem[];
 };
 

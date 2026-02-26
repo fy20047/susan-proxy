@@ -43,6 +43,10 @@ public class OrderGroup {
     @Column(name = "group_name", length = 128)
     private String groupName;
 
+    // 訂單特典張數
+    @Column(name = "bonus_count")
+    private Integer bonusCount;
+
     // 資料最後同步時間
     @Column(name = "last_updated")
     private LocalDateTime lastUpdated;

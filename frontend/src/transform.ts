@@ -31,7 +31,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     buyerNickname: group.buyerNickname,
     statusCode,
     status: toOrderStatusLabel(statusCode),
-    bonusCount: 0,
+    bonusCount: group.bonusCount ?? 0,
     items,
     totalAmount,
     depositAmount,

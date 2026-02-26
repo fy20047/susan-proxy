@@ -13,6 +13,7 @@ public class OrderGroupDto {
     private LocalDateTime lastUpdated;
     private Integer totalAmount;
     private Integer totalBalance;
+    private Integer bonusCount;
     private List<OrderItemDto> items = new ArrayList<>(); // 裝的是 OrderItemDto 而不是 Entity
 
     public Long getId() {
@@ -61,6 +62,14 @@ public class OrderGroupDto {
 
     public void setTotalBalance(Integer totalBalance) {
         this.totalBalance = totalBalance;
+    }
+
+    public Integer getBonusCount() {
+        return bonusCount;
+    }
+
+    public void setBonusCount(Integer bonusCount) {
+        this.bonusCount = bonusCount;
     }
 
     public List<OrderItemDto> getItems() {

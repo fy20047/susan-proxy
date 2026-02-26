@@ -91,6 +91,14 @@ public class SheetSyncService {
                 return newGroup;
             });
 
+            Integer bonus = parseInteger(getValue(record, headerIndexMap, "特典"), null);
+            if (bonus != null) {
+                int current = group.getBonusCount() == null ? 0 : group.getBonusCount();
+                if (bonus > current) {
+                    group.setBonusCount(bonus);
+                }
+            }
+
             OrderItem item = new OrderItem();
             String orderSn = getValue(record, headerIndexMap, "順位");
             if (isBlank(orderSn)) {

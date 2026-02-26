@@ -27,6 +27,8 @@ import java.util.regex.Pattern;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -135,6 +137,7 @@ public class SheetSyncService {
         }
 
         byte[] excelBytes = readExcelBytes(googleSheetUrl);
+        logSheetNames(excelBytes);
         Map<String, Boolean> visibility = readSheetVisibility(excelBytes);
         Set<String> visibleSheets = null;
         if (visibility != null) {
@@ -153,6 +156,7 @@ public class SheetSyncService {
         try (var inputStream = new ByteArrayInputStream(excelBytes)) {
             SheetRowListener listener = new SheetRowListener(orderGroupRepository, visibleSheets);
             EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
+            log.info("實際同步分頁(正規化後): {}", listener.getProcessedSheets());
             if (visibleSheets != null) {
                 if (listener.getProcessedSheets().isEmpty()) {
                     log.warn("設定分頁有設定，但未同步到任何分頁，略過清除舊資料");
@@ -372,6 +376,28 @@ public class SheetSyncService {
 
         if (!toDelete.isEmpty()) {
             orderGroupRepository.deleteAll(toDelete);
+        }
+    }
+
+    private void logSheetNames(byte[] excelBytes) {
+        try (var inputStream = new ByteArrayInputStream(excelBytes);
+             Workbook workbook = WorkbookFactory.create(inputStream)) {
+            int count = workbook.getNumberOfSheets();
+            if (count == 0) {
+                log.warn("Excel 沒有任何分頁");
+                return;
+            }
+            List<String> sheetNames = new ArrayList<>();
+            List<String> normalized = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                String name = workbook.getSheetName(i);
+                sheetNames.add(name);
+                normalized.add(SheetNameNormalizer.normalize(name));
+            }
+            log.info("Excel 分頁名稱: {}", sheetNames);
+            log.info("Excel 分頁名稱(正規化後): {}", normalized);
+        } catch (Exception e) {
+            log.warn("讀取 Excel 分頁名稱失敗", e);
         }
     }
 }

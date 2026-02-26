@@ -1,11 +1,14 @@
 package com.fy20047.susan.service;
 
+import com.alibaba.excel.EasyExcel;
 import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
 import com.fy20047.susan.repository.OrderGroupRepository;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Reader;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +25,7 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +35,7 @@ public class SheetSyncService {
     private static final Pattern QUANTITY_PATTERN = Pattern.compile("\\*(\\d+)");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
-            "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "數量", "日幣原價", "已採購", "抵台", "出貨狀態"
+            "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "日幣原價", "已採購", "出貨狀態"
     );
 
     @Value("${app.google-sheet-url}")
@@ -117,6 +121,22 @@ public class SheetSyncService {
         orderGroupRepository.saveAll(groupByBuyer.values());
     }
 
+    // 依 Google Sheet Excel URL 同步（定時執行）
+    @Scheduled(fixedRate = 300000)
+    @Transactional
+    public void syncFromGoogleSheetUrl() {
+        if (isBlank(googleSheetUrl)) {
+            return;
+        }
+
+        try (var inputStream = new URL(googleSheetUrl).openStream()) {
+            SheetRowListener listener = new SheetRowListener(orderGroupRepository);
+            EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
+        } catch (IOException e) {
+            throw new IllegalStateException("Google Sheet Excel 讀取失敗：" + googleSheetUrl, e);
+        }
+    }
+
     // 解析 CSV 的 TRUE/FALSE 字串為布林值（允許大小寫、空白）
     public boolean parseBoolean(String rawValue) {
         if (rawValue == null) {
@@ -177,6 +197,21 @@ public class SheetSyncService {
             return parser.getRecords();
         } catch (IOException e) {
             throw new IllegalStateException("CSV 讀取失敗：" + csvPath, e);
+        }
+    }
+
+    // 讀取 URL CSV 全部列資料
+    private List<CSVRecord> readAllRecordsFromUrl(String csvUrl) {
+        CSVFormat format = CSVFormat.DEFAULT.builder()
+                .setTrim(true)
+                .setIgnoreEmptyLines(true)
+                .build();
+
+        try (Reader reader = new InputStreamReader(new URL(csvUrl).openStream(), StandardCharsets.UTF_8);
+             CSVParser parser = new CSVParser(reader, format)) {
+            return parser.getRecords();
+        } catch (IOException e) {
+            throw new IllegalStateException("Google Sheet CSV 讀取失敗：" + csvUrl, e);
         }
     }
 

@@ -99,8 +99,10 @@ export default function App() {
                 {/*<p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-t-2 border-dashed border-[#2C1E16] pt-2">*/}
                 {/*  🇯🇵 日本動漫代購 🇯🇵*/}
                 {/*</p>*/}
-                <p className="text-lg md:text-xl font-bold tracking-[0.2em] text-[#2A5C5B] border-[#2C1E16]">
-                  🇯🇵 日本動漫代購 🇯🇵
+                <p className="text-lg md:text-xl font-black tracking-[0.2em] text-[#2A5C5B] border-[#2C1E16] py-2">
+                  日本動漫代購</p>
+                <p className="text-3xl font-black tracking-[0.2em] text-[#000000] border-[#2C1E16]">
+                  訂單查詢系統
                 </p>
               {/*</div>*/}
             </header>

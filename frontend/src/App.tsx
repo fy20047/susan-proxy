@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from "react";
-import { AlertCircle, ArrowLeft, Package, Search, ShoppingBag } from "lucide-react";
+import { AlertCircle, ArrowLeft, Package, Search} from "lucide-react";
 import { fetchOrders } from "./api/orders";
 import OrderCard from "./components/OrderCard";
 import { STATUS_FILTERS, toOrderStatusLabel } from "./status";

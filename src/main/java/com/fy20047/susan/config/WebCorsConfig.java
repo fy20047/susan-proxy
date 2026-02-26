@@ -10,7 +10,7 @@ public class WebCorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:3000", "http://localhost:3001", "https://susan-proxy.zeabur.internal")
+                .allowedOrigins("http://localhost:3000", "http://localhost:3001", "https://susan-proxy.zeabur.internal", "https://susan13shop.zeabur.app")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
     }

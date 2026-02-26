@@ -211,7 +211,7 @@ export default function App() {
                   <span className="text-[#BC4A3C] underline decoration-[#D9A036] decoration-4 underline-offset-4">
                     {currentSearchName}
                   </span>
-                  』的紀錄
+                  』買了蝦咪
                 </span>
               </h2>
             </div>

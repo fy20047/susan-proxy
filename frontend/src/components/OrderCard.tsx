@@ -109,30 +109,32 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
             ))}
           </div>
 
-          <div className="bg-[#EBE3CC] border-2 border-[#2C1E16] p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="bg-[#EBE3CC] border-2 border-[#2C1E16] p-4 flex flex-col md:flex-row md:items-center items-start gap-6">
             {order.bonusCount > 0 && (
-              <div className="flex items-center gap-2 font-black text-[#BC4A3C]">
+              <div className="flex items-center gap-2 font-black text-[#BC4A3C] md:w-1/4 text-left">
                 <Gift size={20} />
                 <span>訂單特典：{order.bonusCount} 張</span>
               </div>
             )}
 
-            <div className="w-full md:w-full bg-white p-4 border-2 border-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] min-w-[234px]">
-              <div className="flex flex-col font-bold text-[#2C1E16]">
-                <div className="flex justify-between gap-6 mb-1 text-[#2A5C5B] text-sm md:text-base">
-                  <span>訂單總額</span>
-                  <span>NT$ {actualTotalAmount.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between gap-6 mb-2 text-sm md:text-base">
-                  <span>定金</span>
-                  <span>NT$ {deposit.toLocaleString()}</span>
-                </div>
+            <div className={`w-full ${order.bonusCount > 0 ? "md:w-3/4 md:ml-auto" : ""}`}>
+              <div className="w-full bg-white p-4 border-2 border-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] min-w-[234px]">
+                <div className="flex flex-col font-bold text-[#2C1E16]">
+                  <div className="flex justify-between gap-6 mb-1 text-[#2A5C5B] text-sm md:text-base">
+                    <span>訂單總額</span>
+                    <span>NT$ {actualTotalAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between gap-6 mb-2 text-sm md:text-base">
+                    <span>定金</span>
+                    <span>NT$ {deposit.toLocaleString()}</span>
+                  </div>
 
-                <div className="border-t-2 border-dashed border-[#2C1E16] my-2"></div>
+                  <div className="border-t-2 border-dashed border-[#2C1E16] my-2"></div>
 
-                <div className="flex justify-between items-center gap-4 bg-[#BC4A3C] text-[#EBE3CC] p-2 mt-1 border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] transform -rotate-1 hover:rotate-0 transition-transform">
-                  <span className="font-black text-base md:text-lg tracking-wider">取付尾款</span>
-                  <span className="font-black text-lg md:text-xl">NT$ {balance.toLocaleString()}</span>
+                  <div className="flex justify-between items-center gap-4 bg-[#BC4A3C] text-[#EBE3CC] p-2 mt-1 border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] transform -rotate-1 hover:rotate-0 transition-transform">
+                    <span className="font-black text-base md:text-lg tracking-wider">取付尾款</span>
+                    <span className="font-black text-lg md:text-xl">NT$ {balance.toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
             </div>

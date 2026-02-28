@@ -10,6 +10,12 @@ export type ApiResponse<T> = {
   timestamp?: string;
 };
 
+export type PageViewStats = {
+  daily: number;
+  monthly: number;
+  total: number;
+};
+
 export type ItemStatusCode =
   | "REGISTERED"
   | "PENDING_DEPOSIT"

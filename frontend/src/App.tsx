@@ -242,8 +242,8 @@ export default function App() {
         </div>
       )}
 
-      <footer className="py-6 text-center text-sm text-gray-700">
-        <p>© 2026 Susan 代購系統．版權所有</p>
+      <footer className="py-6 text-center text-sm font-bold text-[#2A5C5B]">
+        <p>© 2026 俗三連線中. All Rights Reserved.</p>
         <p className="mt-1 text-xs text-gray-600">系統每 5 分鐘自動更新</p>
         <p className="mt-2 text-xs text-[#2A5C5B]">
           瀏覽量：今日 {pageViews?.daily ?? "--"} / 本月 {pageViews?.monthly ?? "--"} / 總計 {pageViews?.total ?? "--"}

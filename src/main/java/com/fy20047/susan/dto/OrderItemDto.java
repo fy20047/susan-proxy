@@ -10,6 +10,7 @@ public class OrderItemDto {
     private Boolean checkedIn;
     private String balanceDueDate;
     private String depositPaidDate;
+    private String checkMark;
     private Integer depositAmount;
     private Integer balanceAmount;
     private Integer totalAmount;
@@ -64,6 +65,14 @@ public class OrderItemDto {
 
     public void setDepositPaidDate(String depositPaidDate) {
         this.depositPaidDate = depositPaidDate;
+    }
+
+    public String getCheckMark() {
+        return checkMark;
+    }
+
+    public void setCheckMark(String checkMark) {
+        this.checkMark = checkMark;
     }
 
     public Integer getDepositAmount() {

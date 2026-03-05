@@ -13,7 +13,8 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
 
   const actualTotalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const actualTotalAmount = order.totalAmount;
-  const deposit = order.depositAmount;
+  const paidDeposit = order.paidDepositAmount;
+  const pendingDeposit = order.pendingDepositAmount;
   const balance = order.balanceAmount;
 
   return (
@@ -124,9 +125,13 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
                     <span>訂單總額</span>
                     <span>NT$ {actualTotalAmount.toLocaleString()}</span>
                   </div>
+                  <div className="flex justify-between gap-6 mb-1 text-sm md:text-base">
+                    <span>已付定金</span>
+                    <span>NT$ {paidDeposit.toLocaleString()}</span>
+                  </div>
                   <div className="flex justify-between gap-6 mb-2 text-sm md:text-base">
-                    <span>定金</span>
-                    <span>NT$ {deposit.toLocaleString()}</span>
+                    <span>待付定金</span>
+                    <span>NT$ {pendingDeposit.toLocaleString()}</span>
                   </div>
 
                   <div className="border-t-2 border-dashed border-[#2C1E16] my-2"></div>

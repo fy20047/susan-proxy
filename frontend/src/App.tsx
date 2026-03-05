@@ -36,6 +36,14 @@ export default function App() {
 
       const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0);
       const depositAmount = items.reduce((sum, item) => sum + item.depositAmount, 0);
+      const paidDepositAmount = items.reduce(
+        (sum, item) => sum + (item.isDepositPaid ? item.depositAmount : 0),
+        0
+      );
+      const pendingDepositAmount = items.reduce(
+        (sum, item) => sum + (item.isDepositPaid ? 0 : item.depositAmount),
+        0
+      );
       const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
 
       acc.push({
@@ -45,6 +53,8 @@ export default function App() {
         items,
         totalAmount,
         depositAmount,
+        paidDepositAmount,
+        pendingDepositAmount,
         balanceAmount
       });
       return acc;

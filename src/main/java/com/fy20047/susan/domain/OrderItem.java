@@ -61,6 +61,9 @@ public class OrderItem {
     @Column(name = "deposit_paid_date", length = 32)
     private String depositPaidDate;
 
+    @Column(name = "check_mark", length = 32)
+    private String checkMark;
+
     // 定金80%
     @Column(name = "deposit_amount")
     private Integer depositAmount;

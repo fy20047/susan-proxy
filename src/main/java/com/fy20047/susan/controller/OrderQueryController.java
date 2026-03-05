@@ -73,6 +73,7 @@ public class OrderQueryController {
                 itemDto.setCheckedIn(item.getCheckedIn());
                 itemDto.setBalanceDueDate(item.getBalanceDueDate());
                 itemDto.setDepositPaidDate(item.getDepositPaidDate());
+                itemDto.setCheckMark(item.getCheckMark());
                 itemDto.setDepositAmount(item.getDepositAmount());
                 itemDto.setBalanceAmount(item.getBalanceAmount());
                 itemDto.setTotalAmount(item.getTotalAmount());

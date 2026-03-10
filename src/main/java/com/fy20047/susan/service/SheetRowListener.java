@@ -112,8 +112,13 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         item.setQueued(parseBoolean(row.getQueued()));
         item.setCheckedIn(parseBoolean(row.getCheckedIn()));
         item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
-        item.setDepositPaidDate(safeString(row.getDepositPaidDate()));
-        item.setCheckMark(safeString(row.getCheckMark()));
+        String depositPaidDate = safeString(row.getDepositPaidDate());
+        item.setDepositPaidDate(depositPaidDate);
+        String checkMark = safeString(row.getCheckMark());
+        if (checkMark.isEmpty() && !depositPaidDate.isEmpty()) {
+            checkMark = depositPaidDate;
+        }
+        item.setCheckMark(checkMark);
         item.setDepositAmount(defaultInt(row.getDepositAmount()));
         item.setBalanceAmount(defaultInt(row.getBalanceAmount()));
         item.setTotalAmount(defaultInt(row.getTotalAmount()));

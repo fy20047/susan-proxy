@@ -108,8 +108,12 @@ public class SheetSyncService {
             item.setQueued(parseBoolean(getValue(record, headerIndexMap, "是否排到")));
             item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, "報到")));
             item.setBalanceDueDate(getValue(record, headerIndexMap, "尾款日"));
-            item.setDepositPaidDate(getValue(record, headerIndexMap, "付定日"));
+            String depositPaidDate = getValue(record, headerIndexMap, "付定日");
+            item.setDepositPaidDate(depositPaidDate);
             String checkMark = getValue(record, headerIndexMap, "對");
+            if (isBlank(checkMark) && !isBlank(depositPaidDate)) {
+                checkMark = depositPaidDate;
+            }
             item.setCheckMark(checkMark);
             item.setDepositAmount(parseInteger(getValue(record, headerIndexMap, "定金80%"), 0));
             item.setBalanceAmount(parseInteger(getValue(record, headerIndexMap, "尾款20%"), 0));

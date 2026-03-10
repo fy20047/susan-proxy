@@ -6,7 +6,10 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     const statusCode = item.itemStatus ?? "REGISTERED";
     const rawCheckMark = item.checkMark ?? "";
     const normalizedCheckMark = rawCheckMark.trim();
-    const isDepositPaid = normalizedCheckMark.length > 0;
+    const rawDepositPaidDate = item.depositPaidDate ?? "";
+    const normalizedDepositPaidDate = rawDepositPaidDate.trim();
+    const isDepositPaid =
+      normalizedCheckMark.length > 0 || normalizedDepositPaidDate.length > 0;
     return {
       id: item.id,
       name: item.itemName,

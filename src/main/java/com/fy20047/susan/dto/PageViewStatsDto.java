@@ -3,16 +3,17 @@ package com.fy20047.susan.dto;
 public class PageViewStatsDto {
 
     private Long daily;
+    private Long weekly;
     private Long monthly;
     private Long total;
 
-    public Long getDaily() {
-        return daily;
-    }
+    public Long getDaily() {return daily;}
 
-    public void setDaily(Long daily) {
-        this.daily = daily;
-    }
+    public void setDaily(Long daily) {this.daily = daily;}
+
+    public Long getWeekly() {return weekly;}
+
+    public void setWeekly(Long weekly) {this.weekly = weekly;}
 
     public Long getMonthly() {
         return monthly;

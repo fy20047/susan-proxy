@@ -12,6 +12,7 @@ export type ApiResponse<T> = {
 
 export type PageViewStats = {
   daily: number;
+  weekly: number;
   monthly: number;
   total: number;
 };

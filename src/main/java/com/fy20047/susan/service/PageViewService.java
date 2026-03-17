@@ -35,12 +35,17 @@ public class PageViewService {
         LocalDate monthStart = today.withDayOfMonth(1);
         LocalDate nextMonthStart = monthStart.plusMonths(1);
 
+        LocalDate weekStart = today.with(java.time.DayOfWeek.MONDAY);
+        LocalDate nextWeekStart = weekStart.plusWeeks(1);
+
         Long daily = pageViewDailyRepository.findCountByDate(today);
+        Long weekly = pageViewDailyRepository.sumByDateRange(weekStart, nextWeekStart);
         Long monthly = pageViewDailyRepository.sumByDateRange(monthStart, nextMonthStart);
         Long total = pageViewDailyRepository.sumTotal();
 
         PageViewStatsDto dto = new PageViewStatsDto();
         dto.setDaily(daily == null ? 0 : daily);
+        dto.setWeekly(weekly == null ? 0 : weekly);
         dto.setMonthly(monthly == null ? 0 : monthly);
         dto.setTotal(total == null ? 0 : total);
         return dto;

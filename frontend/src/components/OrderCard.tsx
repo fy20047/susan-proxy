@@ -94,7 +94,7 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
                     {item.orderSn && (
                         <div className="text-xs text-[#2C1E16] bg-[#F5F0E6] md:bg-transparent p-2 md:p-0 border-l-4 border-[#BC4A3C] md:border-none rounded-r">
                           <span className="md:text-[#BC4A3C] md:font-bold">
-                            {!item.checkedIn && "⚠️您尚未報到，請盡速登記資料⚠️ | "}
+                            {item.checkedIn && "⚠️您尚未報到，請盡速登記資料⚠️ | "}
                             順位：{item.orderSn}
                             <span className="ml-1">({item.queued ? "已排到" : "未排到"})</span>
                           </span>

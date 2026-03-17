@@ -31,7 +31,7 @@ public class SheetRowDto {
     @ExcelProperty("團友")
     private String buyerNickname;
 
-    @ExcelProperty("報到")
+    @ExcelProperty("未報到")
     private String checkedIn;
 
     @ExcelProperty("喊單序")

@@ -106,7 +106,7 @@ public class SheetSyncService {
             }
             item.setOrderSn(orderSn);
             item.setQueued(parseBoolean(getValue(record, headerIndexMap, "是否排到")));
-            item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, "報到")));
+            item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, "未報到")));
             item.setBalanceDueDate(getValue(record, headerIndexMap, "尾款日"));
             String depositPaidDate = getValue(record, headerIndexMap, "付定日");
             item.setDepositPaidDate(depositPaidDate);

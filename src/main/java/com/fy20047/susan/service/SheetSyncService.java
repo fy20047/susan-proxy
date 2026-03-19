@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.csv.CSVFormat;
@@ -49,11 +50,16 @@ public class SheetSyncService {
 
     @Value("${app.google-sheet-url}")
     private String googleSheetUrl;
+    @Value("${app.log-sheet-names:false}")
+    private boolean logSheetNamesEnabled;
 
     private final OrderGroupRepository orderGroupRepository;
+    private final SheetSyncWriter sheetSyncWriter;
+    private final AtomicBoolean syncInProgress = new AtomicBoolean(false);
 
-    public SheetSyncService(OrderGroupRepository orderGroupRepository) {
+    public SheetSyncService(OrderGroupRepository orderGroupRepository, SheetSyncWriter sheetSyncWriter) {
         this.orderGroupRepository = orderGroupRepository;
+        this.sheetSyncWriter = sheetSyncWriter;
     }
 
     @Transactional
@@ -144,14 +150,20 @@ public class SheetSyncService {
     }
 
     @Scheduled(fixedRate = 300000)
-    @Transactional
     public void syncFromGoogleSheetUrl() {
         if (isBlank(googleSheetUrl)) {
             return;
         }
+        if (!syncInProgress.compareAndSet(false, true)) {
+            log.warn("同步已在進行，略過本次排程");
+            return;
+        }
 
+        try {
         byte[] excelBytes = readExcelBytes(googleSheetUrl);
-        logSheetNames(excelBytes);
+        if (logSheetNamesEnabled) {
+            logSheetNames(excelBytes);
+        }
         Map<String, Boolean> visibility = readSheetVisibility(excelBytes);
         Set<String> visibleSheets = null;
         if (visibility != null) {
@@ -168,7 +180,7 @@ public class SheetSyncService {
         }
 
         try (var inputStream = new ByteArrayInputStream(excelBytes)) {
-            SheetRowListener listener = new SheetRowListener(orderGroupRepository, visibleSheets);
+            SheetRowListener listener = new SheetRowListener(sheetSyncWriter, visibleSheets);
             EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
             log.info("實際同步分頁(正規化後): {}", listener.getProcessedSheets());
             if (visibleSheets != null) {
@@ -178,8 +190,11 @@ public class SheetSyncService {
                     deleteGroupsNotIn(visibleSheets);
                 }
             }
+        }
         } catch (Exception e) {
             throw new IllegalStateException("Google Sheet Excel 讀取失敗：" + googleSheetUrl, e);
+        } finally {
+            syncInProgress.set(false);
         }
     }
 

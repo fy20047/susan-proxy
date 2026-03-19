@@ -5,11 +5,9 @@ import com.alibaba.excel.event.AnalysisEventListener;
 import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
-import com.fy20047.susan.repository.OrderGroupRepository;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -25,7 +23,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     );
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
 
-    private final OrderGroupRepository orderGroupRepository;
+    private final SheetSyncWriter sheetSyncWriter;
     private final Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
     private final Set<String> processedSheets = new HashSet<>();
     private int totalGroupsSaved = 0;
@@ -34,12 +32,12 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean validSheet = false;
     private boolean skipCurrentSheet = false;
 
-    public SheetRowListener(OrderGroupRepository orderGroupRepository) {
-        this(orderGroupRepository, null);
+    public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
+        this(sheetSyncWriter, null);
     }
 
-    public SheetRowListener(OrderGroupRepository orderGroupRepository, Set<String> visibleSheets) {
-        this.orderGroupRepository = orderGroupRepository;
+    public SheetRowListener(SheetSyncWriter sheetSyncWriter, Set<String> visibleSheets) {
+        this.sheetSyncWriter = sheetSyncWriter;
         this.visibleSheets = visibleSheets;
     }
 
@@ -140,11 +138,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             return;
         }
 
-        List<OrderGroup> existingGroups = orderGroupRepository.findByGroupName(currentSheetName);
-        if (!existingGroups.isEmpty()) {
-            orderGroupRepository.deleteAll(existingGroups);
-        }
-        orderGroupRepository.saveAll(groupByBuyer.values());
+        sheetSyncWriter.replaceGroups(currentSheetName, groupByBuyer.values());
         processedSheets.add(SheetNameNormalizer.normalize(currentSheetName));
         totalGroupsSaved += groupByBuyer.size();
     }

@@ -55,6 +55,8 @@ public class SheetSyncService {
     private boolean streamByBuyer;
     @Value("${app.sheet-sync.max-rows-warn:5000}")
     private int maxRowsWarn;
+    @Value("${app.sheet-sync.item-batch-size:200}")
+    private int itemBatchSize;
 
     private final OrderGroupRepository orderGroupRepository;
     private final SheetSyncWriter sheetSyncWriter;
@@ -188,7 +190,8 @@ public class SheetSyncService {
                     sheetSyncWriter,
                     visibleSheets,
                     streamByBuyer,
-                    maxRowsWarn);
+                    maxRowsWarn,
+                    itemBatchSize);
             EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
             log.info("實際同步分頁(正規化後): {}", listener.getProcessedSheets());
             if (visibleSheets != null) {

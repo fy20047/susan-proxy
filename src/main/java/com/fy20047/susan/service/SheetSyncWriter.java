@@ -9,12 +9,16 @@ import jakarta.persistence.PersistenceContext;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class SheetSyncWriter {
+
+    private static final Logger log = LoggerFactory.getLogger(SheetSyncWriter.class);
 
     private final OrderGroupRepository orderGroupRepository;
     private final OrderItemRepository orderItemRepository;
@@ -47,7 +51,19 @@ public class SheetSyncWriter {
         if (items == null || items.isEmpty()) {
             return;
         }
+        attachGroupReferences(items);
         orderItemRepository.saveAll(items);
+        entityManager.flush();
+        entityManager.clear();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void saveItem(OrderItem item) {
+        if (item == null) {
+            return;
+        }
+        attachGroupReference(item);
+        orderItemRepository.save(item);
         entityManager.flush();
         entityManager.clear();
     }
@@ -76,5 +92,23 @@ public class SheetSyncWriter {
         if (!existingGroups.isEmpty()) {
             orderGroupRepository.deleteAll(existingGroups);
         }
+    }
+
+    private void attachGroupReferences(List<OrderItem> items) {
+        for (OrderItem item : items) {
+            attachGroupReference(item);
+        }
+    }
+
+    private void attachGroupReference(OrderItem item) {
+        if (item == null) {
+            return;
+        }
+        OrderGroup group = item.getOrderGroup();
+        if (group == null || group.getId() == null) {
+            log.warn("OrderItem 缺少關聯的 orderGroup，略過綁定");
+            return;
+        }
+        item.setOrderGroup(entityManager.getReference(OrderGroup.class, group.getId()));
     }
 }

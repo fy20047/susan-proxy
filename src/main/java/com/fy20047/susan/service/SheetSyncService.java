@@ -1,7 +1,6 @@
 package com.fy20047.susan.service;
 
 import com.alibaba.excel.EasyExcel;
-import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
 import com.fy20047.susan.repository.OrderGroupRepository;
@@ -52,6 +51,10 @@ public class SheetSyncService {
     private String googleSheetUrl;
     @Value("${app.log-sheet-names:false}")
     private boolean logSheetNamesEnabled;
+    @Value("${app.sheet-sync.stream-by-buyer:true}")
+    private boolean streamByBuyer;
+    @Value("${app.sheet-sync.max-rows-warn:5000}")
+    private int maxRowsWarn;
 
     private final OrderGroupRepository orderGroupRepository;
     private final SheetSyncWriter sheetSyncWriter;
@@ -134,19 +137,20 @@ public class SheetSyncService {
             boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, "已採購"));
             boolean isArrived = parseBoolean(getValue(record, headerIndexMap, "抵台"));
             boolean isShipped = parseBoolean(getValue(record, headerIndexMap, "出貨狀態"));
-            item.setItemStatus(determineStatus(isReconciled, isPurchased, isArrived, isShipped));
+            item.setItemStatus(StatusResolver.determine(isReconciled, isPurchased, isArrived, isShipped));
 
             group.addItem(item);
         }
 
+        List<OrderGroup> existingGroups = null;
         if (!isBlank(groupName)) {
-            List<OrderGroup> existingGroups = orderGroupRepository.findByGroupName(groupName);
-            if (!existingGroups.isEmpty()) {
-                orderGroupRepository.deleteAll(existingGroups);
-            }
+            existingGroups = orderGroupRepository.findByGroupName(groupName);
         }
 
         orderGroupRepository.saveAll(groupByBuyer.values());
+        if (existingGroups != null && !existingGroups.isEmpty()) {
+            orderGroupRepository.deleteAll(existingGroups);
+        }
     }
 
     @Scheduled(fixedRate = 300000)
@@ -180,7 +184,11 @@ public class SheetSyncService {
         }
 
         try (var inputStream = new ByteArrayInputStream(excelBytes)) {
-            SheetRowListener listener = new SheetRowListener(sheetSyncWriter, visibleSheets);
+            SheetRowListener listener = new SheetRowListener(
+                    sheetSyncWriter,
+                    visibleSheets,
+                    streamByBuyer,
+                    maxRowsWarn);
             EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
             log.info("實際同步分頁(正規化後): {}", listener.getProcessedSheets());
             if (visibleSheets != null) {
@@ -207,25 +215,6 @@ public class SheetSyncService {
             return false;
         }
         return TRUE_VALUES.contains(normalized);
-    }
-
-    public ItemStatus determineStatus(boolean isReconciled, boolean isPurchased, boolean isArrived, boolean isShipped) {
-        if (isShipped) {
-            return ItemStatus.SHIPPED;
-        }
-        if (isArrived) {
-            return ItemStatus.ARRIVED;
-        }
-
-        if (isPurchased && isReconciled) {
-            return ItemStatus.IN_TRANSIT;
-        } else if (isPurchased && !isReconciled) {
-            return ItemStatus.PENDING_DEPOSIT;
-        } else if (!isPurchased && isReconciled) {
-            return ItemStatus.PENDING_PURCHASE;
-        } else {
-            return ItemStatus.REGISTERED;
-        }
     }
 
     public Integer extractQuantity(String rawItemName) {

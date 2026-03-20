@@ -15,6 +15,9 @@ public class LocalCsvSyncController {
 
     private static final String DEFAULT_SAMPLE_PATH =
             "src/main/resources/sample-data/13對帳用-0107-10東京連線.csv";
+    private static final Path ALLOWED_BASE = Path.of("src", "main", "resources", "sample-data")
+            .toAbsolutePath()
+            .normalize();
 
     private final SheetSyncService sheetSyncService;
 
@@ -27,7 +30,7 @@ public class LocalCsvSyncController {
             @RequestParam(value = "file", required = false) String file,
             @RequestParam(value = "groupName", required = false) String groupName
     ) {
-        Path csvPath = Path.of(file == null || file.trim().isEmpty() ? DEFAULT_SAMPLE_PATH : file.trim());
+        Path csvPath = resolveCsvPath(file);
         sheetSyncService.syncFromCsv(csvPath, groupName);
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -44,5 +47,19 @@ public class LocalCsvSyncController {
         result.put("status", "ok");
         result.put("source", "googleSheetUrl");
         return result;
+    }
+
+    private Path resolveCsvPath(String file) {
+        if (file == null || file.trim().isEmpty()) {
+            return Path.of(DEFAULT_SAMPLE_PATH).toAbsolutePath().normalize();
+        }
+
+        Path rawPath = Path.of(file.trim());
+        Path resolved = rawPath.isAbsolute() ? rawPath : ALLOWED_BASE.resolve(rawPath);
+        resolved = resolved.toAbsolutePath().normalize();
+        if (!resolved.startsWith(ALLOWED_BASE)) {
+            throw new IllegalArgumentException("Disallowed file path.");
+        }
+        return resolved;
     }
 }

@@ -64,6 +64,9 @@ public class SheetRowDto {
     @ExcelProperty("已採購")
     private String purchased;
 
+    @ExcelProperty("抵台")
+    private String arrived;
+
     @ExcelProperty("出貨狀態")
     private String shipped;
 

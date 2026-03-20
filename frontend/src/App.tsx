@@ -61,6 +61,17 @@ export default function App() {
     }, []);
   }, [orders, activeTab]);
 
+  const lastUpdatedLabel = useMemo(() => {
+    const timestamps = orders
+      .map((order) => order.lastUpdated)
+      .filter((value): value is string => Boolean(value))
+      .map((value) => new Date(value))
+      .filter((date) => !Number.isNaN(date.getTime()));
+    if (timestamps.length === 0) return null;
+    const latest = new Date(Math.max(...timestamps.map((date) => date.getTime())));
+    return latest.toLocaleString("zh-TW", { hour12: false });
+  }, [orders]);
+
   const showStatus = activeTab !== "ALL";
   const emptyLabel = activeTab === "ALL" ? "全部" : toOrderStatusLabel(activeTab);
 
@@ -211,6 +222,14 @@ export default function App() {
                 </h2>
               </div>
             </div>
+
+            {lastUpdatedLabel && (
+              <div className="mb-6 text-right">
+                <p className="text-xs md:text-sm font-bold text-[#2A5C5B]">
+                  最後更新：{lastUpdatedLabel}
+                </p>
+              </div>
+            )}
 
             <div className="mb-8 overflow-x-auto pb-4 hide-scrollbar">
               <div className="flex gap-3 min-w-max px-1">

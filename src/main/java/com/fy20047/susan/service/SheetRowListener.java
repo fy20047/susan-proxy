@@ -42,6 +42,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean warnedMaxRows = false;
     private boolean preparedReplace = false;
     private boolean hasData = false;
+    private String lastBuyerNickname = "";
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
         this(sheetSyncWriter, null, false, 0, 200);
@@ -75,6 +76,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         warnedMaxRows = false;
         preparedReplace = false;
         hasData = false;
+        lastBuyerNickname = "";
         validSheet = false;
         skipCurrentSheet = shouldSkipSheet(currentSheetName);
 
@@ -108,6 +110,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         if (!validSheet) {
             return;
         }
+        try {
 
         rowCount += 1;
         if (!warnedMaxRows && maxRowsWarn > 0 && rowCount > maxRowsWarn) {
@@ -115,9 +118,18 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             log.warn("分頁 {} 資料列數已超過 {} 筆，建議分批寫入或提高記憶體限制", currentSheetName, maxRowsWarn);
         }
 
-        String buyerNickname = safeString(row.getBuyerNickname());
         String itemName = safeString(row.getItemName());
-        if (buyerNickname.isEmpty() || itemName.isEmpty()) {
+        if (itemName.isEmpty()) {
+            return;
+        }
+
+        String buyerNickname = safeString(row.getBuyerNickname());
+        if (buyerNickname.isEmpty()) {
+            buyerNickname = lastBuyerNickname;
+        } else {
+            lastBuyerNickname = buyerNickname;
+        }
+        if (buyerNickname.isEmpty()) {
             return;
         }
 
@@ -201,11 +213,16 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             item.setOrderGroup(groupRef);
             itemBuffer.add(item);
             if (itemBuffer.size() >= itemBatchSize) {
-                sheetSyncWriter.saveItems(itemBuffer);
+                flushItems("batch");
                 itemBuffer.clear();
             }
         } else {
             group.addItem(item);
+        }
+        } catch (Exception e) {
+            int rowIndex = context.readRowHolder() == null ? -1 : context.readRowHolder().getRowIndex();
+            int displayRow = rowIndex >= 0 ? rowIndex + 1 : -1;
+            log.warn("Sheet {} row parse/save failed (rowIndex={}, rowCount={})", currentSheetName, displayRow, rowCount, e);
         }
     }
 
@@ -217,7 +234,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
 
         if (streamByBuyer) {
             if (!itemBuffer.isEmpty()) {
-                sheetSyncWriter.saveItems(itemBuffer);
+                flushItems("final");
                 itemBuffer.clear();
             }
             if (!bonusByGroupId.isEmpty()) {
@@ -234,7 +251,15 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             totalGroupsSaved += groupByBuyer.size();
         }
 
+        log.info("Sheet {} processed rows={} groupsSaved={}", currentSheetName, rowCount, totalGroupsSaved);
         processedSheets.add(SheetNameNormalizer.normalize(currentSheetName));
+    }
+
+    @Override
+    public void onException(Exception exception, AnalysisContext context) {
+        int rowIndex = context.readRowHolder() == null ? -1 : context.readRowHolder().getRowIndex();
+        int displayRow = rowIndex >= 0 ? rowIndex + 1 : -1;
+        log.warn("Sheet {} row parse exception (rowIndex={}, rowCount={})", currentSheetName, displayRow, rowCount, exception);
     }
 
     public Set<String> getProcessedSheets() {
@@ -294,6 +319,26 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             return Integer.parseInt(normalized);
         } catch (NumberFormatException e) {
             return null;
+        }
+    }
+
+    private void flushItems(String phase) {
+        try {
+            sheetSyncWriter.saveItems(itemBuffer);
+        } catch (Exception e) {
+            log.warn("分頁 {} 寫入 {} 批次失敗，將改為逐筆寫入 (rowCount={})",
+                    currentSheetName, phase, rowCount, e);
+            for (OrderItem item : itemBuffer) {
+                try {
+                    sheetSyncWriter.saveItem(item);
+                } catch (Exception ex) {
+                    log.warn("分頁 {} 單筆寫入失敗 (rowCount={}, buyer={}, item={})",
+                            currentSheetName, rowCount,
+                            safeString(item.getOrderGroup() == null ? "" : item.getOrderGroup().getBuyerNickname()),
+                            safeString(item.getItemName()),
+                            ex);
+                }
+            }
         }
     }
 

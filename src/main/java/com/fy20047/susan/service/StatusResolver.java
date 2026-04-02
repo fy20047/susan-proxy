@@ -15,7 +15,7 @@ public final class StatusResolver {
         if (isShipped) {
             return ItemStatus.SHIPPED;
         }
-        if (isArrived) {
+        if (isArrived && isPurchased && isReconciled) {
             return ItemStatus.ARRIVED;
         }
         if (isPurchased && isReconciled) {

@@ -25,4 +25,4 @@ spring:
         dialect: org.hibernate.dialect.MariaDBDialect
 
 server:
-  port: 8080
+  port: ${PORT:8080}

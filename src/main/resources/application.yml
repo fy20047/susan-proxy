@@ -1,6 +1,9 @@
 ﻿app:
   google-sheet-url: ${GOOGLE_SHEET_URL:}
   log-sheet-names: false
+  sheet-sync:
+    sheet-name-match-max-compare-length: 64
+    sheet-name-match-min-compare-length: 16
 
 spring:
   application:

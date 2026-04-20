@@ -28,6 +28,8 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private final boolean streamByBuyer;
     private final int maxRowsWarn;
     private final int itemBatchSize;
+    private final int sheetNameMatchMaxCompareLength;
+    private final int sheetNameMatchMinCompareLength;
     private final Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
     private final Map<String, Long> groupIdByBuyer = new LinkedHashMap<>();
     private final Map<Long, Integer> bonusByGroupId = new LinkedHashMap<>();
@@ -45,11 +47,11 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private String lastBuyerNickname = "";
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
-        this(sheetSyncWriter, null, false, 0, 200);
+        this(sheetSyncWriter, null, false, 0, 200, 64, 16);
     }
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter, Set<String> visibleSheets) {
-        this(sheetSyncWriter, visibleSheets, false, 0, 200);
+        this(sheetSyncWriter, visibleSheets, false, 0, 200, 64, 16);
     }
 
     public SheetRowListener(
@@ -57,12 +59,16 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             Set<String> visibleSheets,
             boolean streamByBuyer,
             int maxRowsWarn,
-            int itemBatchSize) {
+            int itemBatchSize,
+            int sheetNameMatchMaxCompareLength,
+            int sheetNameMatchMinCompareLength) {
         this.sheetSyncWriter = sheetSyncWriter;
         this.visibleSheets = visibleSheets;
         this.streamByBuyer = streamByBuyer;
         this.maxRowsWarn = maxRowsWarn;
         this.itemBatchSize = Math.max(1, itemBatchSize);
+        this.sheetNameMatchMaxCompareLength = Math.max(1, sheetNameMatchMaxCompareLength);
+        this.sheetNameMatchMinCompareLength = Math.max(1, sheetNameMatchMinCompareLength);
     }
 
     @Override
@@ -281,7 +287,16 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         if (normalized.isEmpty()) {
             return true;
         }
-        return !visibleSheets.contains(normalized);
+        for (String configuredSheet : visibleSheets) {
+            if (SheetNameNormalizer.isCompatible(
+                    configuredSheet,
+                    normalized,
+                    sheetNameMatchMaxCompareLength,
+                    sheetNameMatchMinCompareLength)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String safeString(String value) {

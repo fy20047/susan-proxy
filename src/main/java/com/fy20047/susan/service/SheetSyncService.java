@@ -57,6 +57,10 @@ public class SheetSyncService {
     private int maxRowsWarn;
     @Value("${app.sheet-sync.item-batch-size:200}")
     private int itemBatchSize;
+    @Value("${app.sheet-sync.sheet-name-match-max-compare-length:64}")
+    private int sheetNameMatchMaxCompareLength;
+    @Value("${app.sheet-sync.sheet-name-match-min-compare-length:16}")
+    private int sheetNameMatchMinCompareLength;
 
     private final OrderGroupRepository orderGroupRepository;
     private final SheetSyncWriter sheetSyncWriter;
@@ -191,7 +195,9 @@ public class SheetSyncService {
                     visibleSheets,
                     streamByBuyer,
                     maxRowsWarn,
-                    itemBatchSize);
+                    itemBatchSize,
+                    sheetNameMatchMaxCompareLength,
+                    sheetNameMatchMinCompareLength);
             EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
             log.info("實際同步分頁(正規化後): {}", listener.getProcessedSheets());
             if (visibleSheets != null) {
@@ -390,7 +396,7 @@ public class SheetSyncService {
         for (OrderGroup group : allGroups) {
             String groupName = group.getGroupName();
             String normalized = SheetNameNormalizer.normalize(groupName);
-            if (normalized.isEmpty() || !visibleSheets.contains(normalized)) {
+            if (normalized.isEmpty() || !isInVisibleSheets(visibleSheets, normalized)) {
                 toDelete.add(group);
             }
         }
@@ -420,5 +426,21 @@ public class SheetSyncService {
         } catch (Exception e) {
             log.warn("讀取 Excel 分頁名稱失敗", e);
         }
+    }
+
+    private boolean isInVisibleSheets(Set<String> visibleSheets, String normalizedSheetName) {
+        if (visibleSheets == null || visibleSheets.isEmpty()) {
+            return false;
+        }
+        for (String configuredSheet : visibleSheets) {
+            if (SheetNameNormalizer.isCompatible(
+                    configuredSheet,
+                    normalizedSheetName,
+                    sheetNameMatchMaxCompareLength,
+                    sheetNameMatchMinCompareLength)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

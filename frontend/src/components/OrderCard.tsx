@@ -96,7 +96,9 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
                           <span className="md:text-[#BC4A3C] md:font-bold">
                             {item.checkedIn && "⚠️您尚未報到，請盡速登記資料⚠️ | "}
                             順位：{item.orderSn}
-                            <span className="ml-1">({item.queued ? "已排到" : "未排到"})</span>
+                            {typeof item.queued === "boolean" && (
+                              <span className="ml-1">({item.queued ? "已排到" : "未排到"})</span>
+                            )}
                           </span>
                         </div>
                     )}

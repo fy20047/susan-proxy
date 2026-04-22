@@ -1,9 +1,11 @@
 package com.fy20047.susan.service;
 
+import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.event.AnalysisEventListener;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
+import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,6 +25,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "日幣原價", "已採購", "出貨狀態"
     );
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
+    private static final String QUEUED_HEADER = resolveExcelHeader("queued");
 
     private final SheetSyncWriter sheetSyncWriter;
     private final boolean streamByBuyer;
@@ -45,6 +48,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean preparedReplace = false;
     private boolean hasData = false;
     private String lastBuyerNickname = "";
+    private boolean hasQueuedColumn = false;
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
         this(sheetSyncWriter, null, false, 0, 200, 64, 16);
@@ -83,6 +87,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         preparedReplace = false;
         hasData = false;
         lastBuyerNickname = "";
+        hasQueuedColumn = false;
         validSheet = false;
         skipCurrentSheet = shouldSkipSheet(currentSheetName);
 
@@ -108,6 +113,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             return;
         }
 
+        hasQueuedColumn = containsHeader(headers, QUEUED_HEADER);
         validSheet = true;
     }
 
@@ -190,7 +196,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             orderSn = safeString(row.getOrderSn());
         }
         item.setOrderSn(orderSn);
-        item.setQueued(parseBoolean(row.getQueued()));
+        item.setQueued(hasQueuedColumn ? parseBoolean(row.getQueued()) : null);
         item.setCheckedIn(parseBoolean(row.getCheckedIn()));
         item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
         String depositPaidDate = safeString(row.getDepositPaidDate());
@@ -334,6 +340,26 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             return Integer.parseInt(normalized);
         } catch (NumberFormatException e) {
             return null;
+        }
+    }
+
+    private boolean containsHeader(Set<String> headers, String headerName) {
+        if (headers == null || headerName == null || headerName.isBlank()) {
+            return false;
+        }
+        return headers.contains(headerName);
+    }
+
+    private static String resolveExcelHeader(String fieldName) {
+        try {
+            Field field = SheetRowDto.class.getDeclaredField(fieldName);
+            ExcelProperty excelProperty = field.getAnnotation(ExcelProperty.class);
+            if (excelProperty == null || excelProperty.value().length == 0) {
+                return "";
+            }
+            return excelProperty.value()[0].trim();
+        } catch (NoSuchFieldException e) {
+            return "";
         }
     }
 

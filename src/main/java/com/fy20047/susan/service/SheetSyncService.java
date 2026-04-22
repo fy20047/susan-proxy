@@ -1,6 +1,7 @@
 package com.fy20047.susan.service;
 
 import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.annotation.ExcelProperty;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
 import com.fy20047.susan.repository.OrderGroupRepository;
@@ -8,6 +9,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -43,6 +45,7 @@ public class SheetSyncService {
     private static final List<String> SETTINGS_SHEET_NAMES = List.of("設定", "分頁");
     private static final Pattern QUANTITY_PATTERN = Pattern.compile("\\*(\\d+)");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
+    private static final String QUEUED_HEADER = resolveExcelHeader("queued");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
             "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "日幣原價", "已採購", "出貨狀態"
     );
@@ -87,6 +90,7 @@ public class SheetSyncService {
         }
 
         Map<String, Integer> headerIndexMap = buildHeaderIndex(records.get(headerIndex));
+        boolean hasQueuedColumn = containsHeader(headerIndexMap, QUEUED_HEADER);
         Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
 
         for (int i = headerIndex + 1; i < records.size(); i++) {
@@ -120,7 +124,9 @@ public class SheetSyncService {
                 orderSn = getValue(record, headerIndexMap, "喊單序");
             }
             item.setOrderSn(orderSn);
-            item.setQueued(parseBoolean(getValue(record, headerIndexMap, "是否排到")));
+            item.setQueued(hasQueuedColumn
+                    ? parseBoolean(getValue(record, headerIndexMap, QUEUED_HEADER))
+                    : null);
             item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, "未報到")));
             item.setBalanceDueDate(getValue(record, headerIndexMap, "尾款日"));
             String depositPaidDate = getValue(record, headerIndexMap, "付定日");
@@ -303,6 +309,13 @@ public class SheetSyncService {
         return record.get(index);
     }
 
+    private boolean containsHeader(Map<String, Integer> headerIndexMap, String headerName) {
+        if (headerIndexMap == null || headerName == null || headerName.isBlank()) {
+            return false;
+        }
+        return headerIndexMap.containsKey(headerName);
+    }
+
     private String normalizeHeaderName(String raw) {
         if (raw == null) {
             return "";
@@ -326,6 +339,19 @@ public class SheetSyncService {
             return Integer.parseInt(normalized);
         } catch (NumberFormatException e) {
             return defaultValue;
+        }
+    }
+
+    private static String resolveExcelHeader(String fieldName) {
+        try {
+            Field field = SheetRowDto.class.getDeclaredField(fieldName);
+            ExcelProperty excelProperty = field.getAnnotation(ExcelProperty.class);
+            if (excelProperty == null || excelProperty.value().length == 0) {
+                return "";
+            }
+            return excelProperty.value()[0].trim();
+        } catch (NoSuchFieldException e) {
+            return "";
         }
     }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { ChangeEvent, MouseEvent, useState } from "react";
 import { ChevronDown, ChevronUp, Gift, Package } from "lucide-react";
 import { OrderView } from "../types";
 import { getItemStatusClass, getSummaryStatusClass } from "../status";
@@ -6,9 +6,18 @@ import { getItemStatusClass, getSummaryStatusClass } from "../status";
 type OrderCardProps = {
   order: OrderView;
   showStatus: boolean;
+  quickOrderSelectable?: boolean;
+  quickOrderSelected?: boolean;
+  onQuickOrderSelectChange?: (orderId: number, checked: boolean) => void;
 };
 
-export default function OrderCard({ order, showStatus }: OrderCardProps) {
+export default function OrderCard({
+  order,
+  showStatus,
+  quickOrderSelectable = false,
+  quickOrderSelected = false,
+  onQuickOrderSelectChange
+}: OrderCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const actualTotalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -16,6 +25,14 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
   const paidDeposit = order.paidDepositAmount;
   const pendingDeposit = order.pendingDepositAmount;
   const balance = order.balanceAmount;
+
+  const handleQuickOrderClick = (event: MouseEvent<HTMLLabelElement>) => {
+    event.stopPropagation();
+  };
+
+  const handleQuickOrderChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onQuickOrderSelectChange?.(order.id, event.target.checked);
+  };
 
   return (
     <div className="bg-white border-4 border-[#2C1E16] shadow-[6px_6px_0px_#2C1E16] mb-6 transition-all duration-300">
@@ -41,6 +58,21 @@ export default function OrderCard({ order, showStatus }: OrderCardProps) {
         </div>
 
         <div className="flex items-center justify-between w-full md:w-auto gap-4 border-t-2 md:border-t-0 border-dashed border-[#2C1E16] pt-3 md:pt-0 mt-2 md:mt-0">
+          {quickOrderSelectable && (
+            <label
+              className="flex items-center gap-2 px-3 py-1 bg-[#EBE3CC] border-2 border-[#2C1E16] text-sm font-bold text-[#2C1E16] shadow-[2px_2px_0px_#2C1E16]"
+              onClick={handleQuickOrderClick}
+            >
+              <input
+                type="checkbox"
+                checked={quickOrderSelected}
+                onChange={handleQuickOrderChange}
+                className="h-4 w-4 accent-[#BC4A3C]"
+                aria-label={`選取 ${order.groupName} 進行快速下單`}
+              />
+              <span>快速下單</span>
+            </label>
+          )}
           {showStatus && (
             <span
               className={`px-3 py-1 font-bold border-2 border-[#2C1E16] text-sm md:text-base shadow-[2px_2px_0px_#2C1E16] ${getSummaryStatusClass(

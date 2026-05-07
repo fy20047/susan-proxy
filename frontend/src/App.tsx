@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowLeft, Package, Search } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Copy,
+  ExternalLink,
+  Package,
+  Search
+} from "lucide-react";
 import { fetchOrders } from "./api/orders";
 import { recordPageView } from "./api/pageViews";
 import OrderCard from "./components/OrderCard";
@@ -22,6 +29,8 @@ import {
 import logo from "./image/logo1.png";
 import icon from "./image/icon.png";
 
+const SELLER_STORE_URL = "https://example.com";
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<"search" | "results">("search");
   const [searchName, setSearchName] = useState("");
@@ -33,6 +42,8 @@ export default function App() {
   const [preorderShippingFilter, setPreorderShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
   const [pageViews, setPageViews] = useState<PageViewStats | null>(null);
+  const [selectedQuickOrderIds, setSelectedQuickOrderIds] = useState<number[]>([]);
+  const [quickOrderMessage, setQuickOrderMessage] = useState<string | null>(null);
 
   useEffect(() => {
     recordPageView()
@@ -81,6 +92,26 @@ export default function App() {
     }, []);
   }, [standardOrders, standardFilter]);
 
+  const quickOrderEligibleOrders = useMemo(
+    () => filteredPreorderOrders.filter((order) => order.summaryStatusCode === "READY_TO_SHIP"),
+    [filteredPreorderOrders]
+  );
+
+  const selectedQuickOrders = useMemo(() => {
+    const selectedIds = new Set(selectedQuickOrderIds);
+    return quickOrderEligibleOrders.filter((order) => selectedIds.has(order.id));
+  }, [quickOrderEligibleOrders, selectedQuickOrderIds]);
+
+  const selectedQuickOrderBalance = useMemo(
+    () => selectedQuickOrders.reduce((sum, order) => sum + order.balanceAmount, 0),
+    [selectedQuickOrders]
+  );
+
+  useEffect(() => {
+    const selectableIds = new Set(quickOrderEligibleOrders.map((order) => order.id));
+    setSelectedQuickOrderIds((prev) => prev.filter((id) => selectableIds.has(id)));
+  }, [quickOrderEligibleOrders]);
+
   const lastUpdatedLabel = useMemo(() => {
     const timestamps = orders
       .map((order) => order.lastUpdated)
@@ -125,6 +156,8 @@ export default function App() {
       setStandardFilter("ALL");
       setPreorderItemFilter("ALL");
       setPreorderShippingFilter("ALL");
+      setSelectedQuickOrderIds([]);
+      setQuickOrderMessage(null);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "搜尋發生錯誤，請稍後再試。";
@@ -132,6 +165,39 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleQuickOrderSelectChange = (orderId: number, checked: boolean) => {
+    setQuickOrderMessage(null);
+    setSelectedQuickOrderIds((prev) => {
+      if (checked) {
+        return prev.includes(orderId) ? prev : [...prev, orderId];
+      }
+      return prev.filter((id) => id !== orderId);
+    });
+  };
+
+  const handleCopyQuickOrderDetails = async () => {
+    if (!selectedQuickOrders.length) {
+      return;
+    }
+
+    const summaryText = selectedQuickOrders.map((order) => order.groupName).join("\n");
+    try {
+      await navigator.clipboard.writeText(summaryText);
+      setQuickOrderMessage(`已複製 ${selectedQuickOrders.length} 筆團名。`);
+    } catch {
+      setQuickOrderMessage("複製失敗，請確認瀏覽器是否允許剪貼簿權限。");
+    }
+  };
+
+  const handleQuickOrderSubmit = () => {
+    if (!selectedQuickOrders.length) {
+      return;
+    }
+
+    setQuickOrderMessage(null);
+    window.open(SELLER_STORE_URL, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -311,9 +377,56 @@ export default function App() {
                   </div>
                 </div>
 
+                {quickOrderEligibleOrders.length > 0 && (
+                  <div className="mb-6 bg-white border-4 border-[#2C1E16] p-4 md:p-5 shadow-[4px_4px_0px_#2C1E16]">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-lg font-black text-[#2C1E16]">快速下單</p>
+                        <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
+                          已選 {selectedQuickOrders.length} 筆，可出貨尾款合計 NT$ {selectedQuickOrderBalance.toLocaleString()}
+                        </p>
+                        <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
+                          勾選要一起出貨的團名後，可直接複製明細並前往賣貨便賣場。
+                        </p>
+                        {quickOrderMessage && (
+                          <p className="text-sm font-bold text-[#BC4A3C]">{quickOrderMessage}</p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                        <button
+                          type="button"
+                          onClick={handleCopyQuickOrderDetails}
+                          disabled={!selectedQuickOrders.length}
+                          className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                        >
+                          <Copy size={18} />
+                          <span>複製明細</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickOrderSubmit}
+                          disabled={!selectedQuickOrders.length}
+                          className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                        >
+                          <ExternalLink size={18} />
+                          <span>下單</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {filteredPreorderOrders.length > 0 ? (
                   filteredPreorderOrders.map((order) => (
-                    <OrderCard key={order.id} order={order} showStatus={showPreorderStatus} />
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      showStatus={showPreorderStatus}
+                      quickOrderSelectable={order.summaryStatusCode === "READY_TO_SHIP"}
+                      quickOrderSelected={selectedQuickOrderIds.includes(order.id)}
+                      onQuickOrderSelectChange={handleQuickOrderSelectChange}
+                    />
                   ))
                 ) : (
                   <EmptyState label={preorderEmptyLabel} />

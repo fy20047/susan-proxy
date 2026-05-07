@@ -3,6 +3,8 @@ package com.fy20047.susan.service;
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.event.AnalysisEventListener;
+import com.fy20047.susan.domain.GroupSourceType;
+import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
 import java.lang.reflect.Field;
@@ -20,14 +22,17 @@ import org.slf4j.LoggerFactory;
 public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
 
     private static final Logger log = LoggerFactory.getLogger(SheetRowListener.class);
-    private static final Set<String> SETTINGS_SHEET_NAMES = Set.of("設定", "分頁");
+    private static final Set<String> SETTINGS_SHEET_NAMES = Set.of("設定");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
-            "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "已採購", "出貨狀態"
-    );
+            "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
     private static final String QUEUED_HEADER = resolveExcelHeader("queued");
+    private static final String PREORDER_STATUS_HEADER = resolveExcelHeader("preorderStatus");
 
     private final SheetSyncWriter sheetSyncWriter;
+    private final String sourceKey;
+    private final GroupSourceType defaultSourceType;
+    private final Map<String, SheetSyncSheetConfig> sheetConfigs;
     private final boolean streamByBuyer;
     private final int maxRowsWarn;
     private final int itemBatchSize;
@@ -38,9 +43,10 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private final Map<Long, Integer> bonusByGroupId = new LinkedHashMap<>();
     private final List<OrderItem> itemBuffer = new ArrayList<>();
     private final Set<String> processedSheets = new HashSet<>();
+
     private int totalGroupsSaved = 0;
-    private final Set<String> visibleSheets;
     private String currentSheetName = "";
+    private GroupSourceType currentSourceType = GroupSourceType.STANDARD;
     private boolean validSheet = false;
     private boolean skipCurrentSheet = false;
     private int rowCount = 0;
@@ -49,13 +55,14 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean hasData = false;
     private String lastBuyerNickname = "";
     private boolean hasQueuedColumn = false;
+    private boolean hasPreorderStatusColumn = false;
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
-        this(sheetSyncWriter, null, false, 0, 200, 64, 16);
+        this(sheetSyncWriter, null, GroupSourceType.STANDARD, null, false, 0, 200, 64, 16);
     }
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter, Set<String> visibleSheets) {
-        this(sheetSyncWriter, visibleSheets, false, 0, 200, 64, 16);
+        this(sheetSyncWriter, null, GroupSourceType.STANDARD, toSheetConfigs(visibleSheets), false, 0, 200, 64, 16);
     }
 
     public SheetRowListener(
@@ -66,8 +73,32 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             int itemBatchSize,
             int sheetNameMatchMaxCompareLength,
             int sheetNameMatchMinCompareLength) {
+        this(
+                sheetSyncWriter,
+                null,
+                GroupSourceType.STANDARD,
+                toSheetConfigs(visibleSheets),
+                streamByBuyer,
+                maxRowsWarn,
+                itemBatchSize,
+                sheetNameMatchMaxCompareLength,
+                sheetNameMatchMinCompareLength);
+    }
+
+    public SheetRowListener(
+            SheetSyncWriter sheetSyncWriter,
+            String sourceKey,
+            GroupSourceType defaultSourceType,
+            Map<String, SheetSyncSheetConfig> sheetConfigs,
+            boolean streamByBuyer,
+            int maxRowsWarn,
+            int itemBatchSize,
+            int sheetNameMatchMaxCompareLength,
+            int sheetNameMatchMinCompareLength) {
         this.sheetSyncWriter = sheetSyncWriter;
-        this.visibleSheets = visibleSheets;
+        this.sourceKey = sourceKey;
+        this.defaultSourceType = defaultSourceType == null ? GroupSourceType.STANDARD : defaultSourceType;
+        this.sheetConfigs = sheetConfigs;
         this.streamByBuyer = streamByBuyer;
         this.maxRowsWarn = maxRowsWarn;
         this.itemBatchSize = Math.max(1, itemBatchSize);
@@ -78,6 +109,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     @Override
     public void invokeHeadMap(Map<Integer, String> headMap, AnalysisContext context) {
         currentSheetName = context.readSheetHolder().getSheetName();
+        currentSourceType = defaultSourceType;
         groupByBuyer.clear();
         groupIdByBuyer.clear();
         bonusByGroupId.clear();
@@ -88,16 +120,17 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         hasData = false;
         lastBuyerNickname = "";
         hasQueuedColumn = false;
+        hasPreorderStatusColumn = false;
         validSheet = false;
         skipCurrentSheet = shouldSkipSheet(currentSheetName);
 
         if (skipCurrentSheet) {
-            log.info("略過分頁 {}", currentSheetName);
+            log.info("Skip sheet {}", currentSheetName);
             return;
         }
 
         if (headMap == null || headMap.isEmpty()) {
-            log.warn("分頁 {} 找不到欄位表頭", currentSheetName);
+            log.warn("Sheet {} has no header row.", currentSheetName);
             return;
         }
 
@@ -109,11 +142,13 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         }
 
         if (!headers.containsAll(REQUIRED_HEADERS)) {
-            log.warn("分頁 {} 欄位不足，略過同步，當前欄位: {}", currentSheetName, headers);
+            log.warn("Sheet {} is missing required headers: {}", currentSheetName, headers);
             return;
         }
 
         hasQueuedColumn = containsHeader(headers, QUEUED_HEADER);
+        hasPreorderStatusColumn = containsHeader(headers, PREORDER_STATUS_HEADER);
+        currentSourceType = resolveCurrentSourceType(resolveSheetConfig(currentSheetName), hasPreorderStatusColumn);
         validSheet = true;
     }
 
@@ -122,115 +157,101 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         if (!validSheet) {
             return;
         }
+
         try {
-
-        rowCount += 1;
-        if (!warnedMaxRows && maxRowsWarn > 0 && rowCount > maxRowsWarn) {
-            warnedMaxRows = true;
-            log.warn("分頁 {} 資料列數已超過 {} 筆，建議分批寫入或提高記憶體限制", currentSheetName, maxRowsWarn);
-        }
-
-        String itemName = safeString(row.getItemName());
-        if (itemName.isEmpty()) {
-            return;
-        }
-
-        String buyerNickname = safeString(row.getBuyerNickname());
-        if (buyerNickname.isEmpty()) {
-            buyerNickname = lastBuyerNickname;
-        } else {
-            lastBuyerNickname = buyerNickname;
-        }
-        if (buyerNickname.isEmpty()) {
-            return;
-        }
-
-        if (streamByBuyer && !preparedReplace) {
-            sheetSyncWriter.prepareReplace(currentSheetName);
-            preparedReplace = true;
-        }
-
-        OrderGroup group;
-        Long groupId = null;
-        if (streamByBuyer) {
-            groupId = groupIdByBuyer.get(buyerNickname);
-            if (groupId == null) {
-                OrderGroup newGroup = new OrderGroup();
-                newGroup.setBuyerNickname(buyerNickname);
-                newGroup.setGroupName(currentSheetName);
-                newGroup.setLastUpdated(LocalDateTime.now());
-                groupId = sheetSyncWriter.createGroup(newGroup);
-                groupIdByBuyer.put(buyerNickname, groupId);
-                totalGroupsSaved += 1;
-                hasData = true;
+            rowCount += 1;
+            if (!warnedMaxRows && maxRowsWarn > 0 && rowCount > maxRowsWarn) {
+                warnedMaxRows = true;
+                log.warn("Sheet {} exceeded maxRowsWarn={}", currentSheetName, maxRowsWarn);
             }
-            group = null;
-        } else {
-            group = groupByBuyer.computeIfAbsent(buyerNickname, key -> {
-                OrderGroup newGroup = new OrderGroup();
-                newGroup.setBuyerNickname(key);
-                newGroup.setGroupName(currentSheetName);
-                newGroup.setLastUpdated(LocalDateTime.now());
-                return newGroup;
-            });
-        }
 
-        Integer bonus = parseInteger(row.getBonus());
-        if (bonus != null) {
+            String itemName = safeString(row.getItemName());
+            if (itemName.isEmpty()) {
+                return;
+            }
+
+            String buyerNickname = safeString(row.getBuyerNickname());
+            if (buyerNickname.isEmpty()) {
+                buyerNickname = lastBuyerNickname;
+            } else {
+                lastBuyerNickname = buyerNickname;
+            }
+            if (buyerNickname.isEmpty()) {
+                return;
+            }
+
+            if (streamByBuyer && !preparedReplace) {
+                sheetSyncWriter.prepareReplace(currentSheetName, sourceKey);
+                preparedReplace = true;
+            }
+
+            OrderGroup group;
+            Long groupId = null;
             if (streamByBuyer) {
-                int current = bonusByGroupId.getOrDefault(groupId, 0);
-                if (bonus > current) {
-                    bonusByGroupId.put(groupId, bonus);
+                groupId = groupIdByBuyer.get(buyerNickname);
+                if (groupId == null) {
+                    OrderGroup newGroup = buildGroupSkeleton(buyerNickname);
+                    groupId = sheetSyncWriter.createGroup(newGroup);
+                    groupIdByBuyer.put(buyerNickname, groupId);
+                    totalGroupsSaved += 1;
+                    hasData = true;
+                }
+                group = null;
+            } else {
+                group = groupByBuyer.computeIfAbsent(buyerNickname, key -> buildGroupSkeleton(key));
+            }
+
+            Integer bonus = parseInteger(row.getBonus());
+            if (bonus != null) {
+                if (streamByBuyer) {
+                    int current = bonusByGroupId.getOrDefault(groupId, 0);
+                    if (bonus > current) {
+                        bonusByGroupId.put(groupId, bonus);
+                    }
+                } else {
+                    int current = group.getBonusCount() == null ? 0 : group.getBonusCount();
+                    if (bonus > current) {
+                        group.setBonusCount(bonus);
+                    }
+                }
+            }
+
+            OrderItem item = new OrderItem();
+            String orderSn = safeString(row.getOrderRank());
+            if (orderSn.isEmpty()) {
+                orderSn = safeString(row.getOrderSn());
+            }
+            item.setOrderSn(orderSn);
+            item.setQueued(hasQueuedColumn ? parseBoolean(row.getQueued()) : null);
+            item.setCheckedIn(parseBoolean(row.getCheckedIn()));
+            item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
+            String depositPaidDate = safeString(row.getDepositPaidDate());
+            item.setDepositPaidDate(depositPaidDate);
+            String checkMark = safeString(row.getCheckMark());
+            if (checkMark.isEmpty() && !depositPaidDate.isEmpty()) {
+                checkMark = depositPaidDate;
+            }
+            item.setCheckMark(checkMark);
+            item.setDepositAmount(defaultInt(row.getDepositAmount()));
+            item.setBalanceAmount(defaultInt(row.getBalanceAmount()));
+            item.setTotalAmount(defaultInt(row.getTotalAmount()));
+            item.setItemName(itemName);
+            item.setQuantity(defaultInt(row.getQuantity(), 1));
+            item.setJpyPrice(row.getJpyPrice());
+            item.setItemStatus(resolveItemStatus(row));
+
+            if (streamByBuyer) {
+                OrderGroup groupRef = new OrderGroup();
+                groupRef.setId(groupId);
+                item.setOrderGroup(groupRef);
+                itemBuffer.add(item);
+                if (itemBuffer.size() >= itemBatchSize) {
+                    flushItems("batch");
+                    itemBuffer.clear();
                 }
             } else {
-                int current = group.getBonusCount() == null ? 0 : group.getBonusCount();
-                if (bonus > current) {
-                    group.setBonusCount(bonus);
-                }
+                group.addItem(item);
             }
-        }
-
-        OrderItem item = new OrderItem();
-        String orderSn = safeString(row.getOrderRank());
-        if (orderSn.isEmpty()) {
-            orderSn = safeString(row.getOrderSn());
-        }
-        item.setOrderSn(orderSn);
-        item.setQueued(hasQueuedColumn ? parseBoolean(row.getQueued()) : null);
-        item.setCheckedIn(parseBoolean(row.getCheckedIn()));
-        item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
-        String depositPaidDate = safeString(row.getDepositPaidDate());
-        item.setDepositPaidDate(depositPaidDate);
-        String checkMark = safeString(row.getCheckMark());
-        if (checkMark.isEmpty() && !depositPaidDate.isEmpty()) {
-            checkMark = depositPaidDate;
-        }
-        item.setCheckMark(checkMark);
-        item.setDepositAmount(defaultInt(row.getDepositAmount()));
-        item.setBalanceAmount(defaultInt(row.getBalanceAmount()));
-        item.setTotalAmount(defaultInt(row.getTotalAmount()));
-        item.setItemName(itemName);
-        item.setQuantity(defaultInt(row.getQuantity(), 1));
-        item.setJpyPrice(row.getJpyPrice());
-
-        boolean isReconciled = parseBoolean(row.getReconciled());
-        boolean isPurchased = parseBoolean(row.getPurchased());
-        boolean isArrived = parseBoolean(row.getArrived());
-        boolean isShipped = parseBoolean(row.getShipped());
-        item.setItemStatus(StatusResolver.determine(isReconciled, isPurchased, isArrived, isShipped));
-
-        if (streamByBuyer) {
-            OrderGroup groupRef = new OrderGroup();
-            groupRef.setId(groupId);
-            item.setOrderGroup(groupRef);
-            itemBuffer.add(item);
-            if (itemBuffer.size() >= itemBatchSize) {
-                flushItems("batch");
-                itemBuffer.clear();
-            }
-        } else {
-            group.addItem(item);
-        }
         } catch (Exception e) {
             int rowIndex = context.readRowHolder() == null ? -1 : context.readRowHolder().getRowIndex();
             int displayRow = rowIndex >= 0 ? rowIndex + 1 : -1;
@@ -259,11 +280,12 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             if (groupByBuyer.isEmpty()) {
                 return;
             }
-            sheetSyncWriter.replaceGroups(currentSheetName, groupByBuyer.values());
+            sheetSyncWriter.replaceGroups(currentSheetName, sourceKey, groupByBuyer.values());
             totalGroupsSaved += groupByBuyer.size();
         }
 
-        log.info("Sheet {} processed rows={} groupsSaved={}", currentSheetName, rowCount, totalGroupsSaved);
+        log.info("Sheet {} processed rows={} groupsSaved={} sourceType={}",
+                currentSheetName, rowCount, totalGroupsSaved, currentSourceType);
         processedSheets.add(SheetNameNormalizer.normalize(currentSheetName));
     }
 
@@ -282,27 +304,64 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         return totalGroupsSaved;
     }
 
+    private OrderGroup buildGroupSkeleton(String buyerNickname) {
+        OrderGroup newGroup = new OrderGroup();
+        newGroup.setBuyerNickname(buyerNickname);
+        newGroup.setGroupName(currentSheetName);
+        newGroup.setSourceKey(sourceKey);
+        newGroup.setSourceType(currentSourceType);
+        newGroup.setLastUpdated(LocalDateTime.now());
+        return newGroup;
+    }
+
+    private ItemStatus resolveItemStatus(SheetRowDto row) {
+        if (currentSourceType == GroupSourceType.PREORDER && hasPreorderStatusColumn) {
+            return StatusResolver.determinePreorder(row.getPreorderStatus());
+        }
+
+        boolean isReconciled = parseBoolean(row.getReconciled());
+        boolean isPurchased = parseBoolean(row.getPurchased());
+        boolean isArrived = parseBoolean(row.getArrived());
+        boolean isShipped = parseBoolean(row.getShipped());
+        return StatusResolver.determineLegacy(isReconciled, isPurchased, isArrived, isShipped);
+    }
+
     private boolean shouldSkipSheet(String sheetName) {
         if (sheetName != null && SETTINGS_SHEET_NAMES.contains(sheetName)) {
             return true;
         }
-        if (visibleSheets == null) {
+        if (sheetConfigs == null) {
             return false;
         }
-        String normalized = SheetNameNormalizer.normalize(sheetName);
-        if (normalized.isEmpty()) {
-            return true;
+        SheetSyncSheetConfig config = resolveSheetConfig(sheetName);
+        return config == null || !config.isVisible();
+    }
+
+    private SheetSyncSheetConfig resolveSheetConfig(String sheetName) {
+        if (sheetConfigs == null || sheetConfigs.isEmpty()) {
+            return null;
         }
-        for (String configuredSheet : visibleSheets) {
+        String normalized = SheetNameNormalizer.normalize(sheetName);
+        for (Map.Entry<String, SheetSyncSheetConfig> entry : sheetConfigs.entrySet()) {
             if (SheetNameNormalizer.isCompatible(
-                    configuredSheet,
+                    entry.getKey(),
                     normalized,
                     sheetNameMatchMaxCompareLength,
                     sheetNameMatchMinCompareLength)) {
-                return false;
+                return entry.getValue();
             }
         }
-        return true;
+        return null;
+    }
+
+    private GroupSourceType resolveCurrentSourceType(SheetSyncSheetConfig config, boolean hasPreorderHeader) {
+        boolean preorder = defaultSourceType == GroupSourceType.PREORDER;
+        if (config != null && config.getPreorder() != null) {
+            preorder = config.getPreorder();
+        } else if (hasPreorderHeader) {
+            preorder = true;
+        }
+        return preorder ? GroupSourceType.PREORDER : GroupSourceType.STANDARD;
     }
 
     private String safeString(String value) {
@@ -363,24 +422,30 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         }
     }
 
+    private static Map<String, SheetSyncSheetConfig> toSheetConfigs(Set<String> visibleSheets) {
+        if (visibleSheets == null || visibleSheets.isEmpty()) {
+            return null;
+        }
+        Map<String, SheetSyncSheetConfig> configMap = new LinkedHashMap<>();
+        for (String visibleSheet : visibleSheets) {
+            configMap.put(visibleSheet, new SheetSyncSheetConfig(true, null));
+        }
+        return configMap;
+    }
+
     private void flushItems(String phase) {
         try {
             sheetSyncWriter.saveItems(itemBuffer);
         } catch (Exception e) {
-            log.warn("分頁 {} 寫入 {} 批次失敗，將改為逐筆寫入 (rowCount={})",
-                    currentSheetName, phase, rowCount, e);
+            log.warn("Sheet {} failed to save {} batch (rowCount={})", currentSheetName, phase, rowCount, e);
             for (OrderItem item : itemBuffer) {
                 try {
                     sheetSyncWriter.saveItem(item);
                 } catch (Exception ex) {
-                    log.warn("分頁 {} 單筆寫入失敗 (rowCount={}, buyer={}, item={})",
-                            currentSheetName, rowCount,
-                            safeString(item.getOrderGroup() == null ? "" : item.getOrderGroup().getBuyerNickname()),
-                            safeString(item.getItemName()),
-                            ex);
+                    log.warn("Sheet {} failed to save single item (rowCount={}, item={})",
+                            currentSheetName, rowCount, safeString(item.getItemName()), ex);
                 }
             }
         }
     }
-
 }

@@ -2,8 +2,8 @@ package com.fy20047.susan.service;
 
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
-import com.fy20047.susan.repository.OrderItemRepository;
 import com.fy20047.susan.repository.OrderGroupRepository;
+import com.fy20047.susan.repository.OrderItemRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.util.Collection;
@@ -22,6 +22,7 @@ public class SheetSyncWriter {
 
     private final OrderGroupRepository orderGroupRepository;
     private final OrderItemRepository orderItemRepository;
+
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -31,8 +32,8 @@ public class SheetSyncWriter {
     }
 
     @Transactional
-    public void prepareReplace(String groupName) {
-        List<OrderGroup> existingGroups = orderGroupRepository.findByGroupName(groupName);
+    public void prepareReplace(String groupName, String sourceKey) {
+        List<OrderGroup> existingGroups = findExistingGroups(groupName, sourceKey);
         if (!existingGroups.isEmpty()) {
             orderGroupRepository.deleteAll(existingGroups);
         }
@@ -86,12 +87,19 @@ public class SheetSyncWriter {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void replaceGroups(String groupName, Collection<OrderGroup> groups) {
-        List<OrderGroup> existingGroups = orderGroupRepository.findByGroupName(groupName);
+    public void replaceGroups(String groupName, String sourceKey, Collection<OrderGroup> groups) {
+        List<OrderGroup> existingGroups = findExistingGroups(groupName, sourceKey);
         orderGroupRepository.saveAll(groups);
         if (!existingGroups.isEmpty()) {
             orderGroupRepository.deleteAll(existingGroups);
         }
+    }
+
+    private List<OrderGroup> findExistingGroups(String groupName, String sourceKey) {
+        if (sourceKey == null || sourceKey.isBlank()) {
+            return orderGroupRepository.findByGroupName(groupName);
+        }
+        return orderGroupRepository.findByGroupNameAndSourceKey(groupName, sourceKey);
     }
 
     private void attachGroupReferences(List<OrderItem> items) {
@@ -106,7 +114,7 @@ public class SheetSyncWriter {
         }
         OrderGroup group = item.getOrderGroup();
         if (group == null || group.getId() == null) {
-            log.warn("OrderItem 缺少關聯的 orderGroup，略過綁定");
+            log.warn("OrderItem missing orderGroup reference before save.");
             return;
         }
         item.setOrderGroup(entityManager.getReference(OrderGroup.class, group.getId()));

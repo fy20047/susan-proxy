@@ -1,5 +1,7 @@
-﻿app:
+app:
   google-sheet-url: ${GOOGLE_SHEET_URL:}
+  preorder-google-sheet-url: ${PREORDER_GOOGLE_SHEET_URL:https://docs.google.com/spreadsheets/d/1My6HuEGvcM9e-2rHCXMgpAPMBnuyGjQeuEvC_gDFryo/export?format=xlsx}
+  standard-google-sheet-url: ${STANDARD_GOOGLE_SHEET_URL:https://docs.google.com/spreadsheets/d/1o6WQVtsjajFf2Z0mCOJKlZhOO4GfKR0y5aZhYmkucss/export?format=xlsx}
   log-sheet-names: false
   sheet-sync:
     sheet-name-match-max-compare-length: 64
@@ -15,9 +17,7 @@ spring:
     driver-class-name: org.mariadb.jdbc.Driver
   jpa:
     hibernate:
-      # 為了開發便利使用 update，正式上線改為 none 或 validate
       ddl-auto: update
-    # 開啟 SQL log，方便除錯
     show-sql: true
     properties:
       hibernate:

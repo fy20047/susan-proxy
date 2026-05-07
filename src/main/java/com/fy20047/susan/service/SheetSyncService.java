@@ -2,6 +2,7 @@ package com.fy20047.susan.service;
 
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.annotation.ExcelProperty;
+import com.fy20047.susan.domain.GroupSourceType;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
 import com.fy20047.susan.repository.OrderGroupRepository;
@@ -10,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.lang.reflect.Field;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -42,26 +44,56 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(SheetSyncService.class);
-    private static final List<String> SETTINGS_SHEET_NAMES = List.of("設定", "分頁");
+    private static final List<String> SETTINGS_SHEET_NAMES = List.of("設定");
     private static final Pattern QUANTITY_PATTERN = Pattern.compile("\\*(\\d+)");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
+    private static final String BUYER_HEADER = resolveExcelHeader("buyerNickname");
+    private static final String ITEM_NAME_HEADER = resolveExcelHeader("itemName");
+    private static final String ORDER_RANK_HEADER = resolveExcelHeader("orderRank");
+    private static final String ORDER_SN_HEADER = resolveExcelHeader("orderSn");
     private static final String QUEUED_HEADER = resolveExcelHeader("queued");
+    private static final String CHECKED_IN_HEADER = resolveExcelHeader("checkedIn");
+    private static final String BALANCE_DUE_DATE_HEADER = resolveExcelHeader("balanceDueDate");
+    private static final String DEPOSIT_PAID_DATE_HEADER = resolveExcelHeader("depositPaidDate");
+    private static final String CHECK_MARK_HEADER = resolveExcelHeader("checkMark");
+    private static final String DEPOSIT_AMOUNT_HEADER = resolveExcelHeader("depositAmount");
+    private static final String BALANCE_AMOUNT_HEADER = resolveExcelHeader("balanceAmount");
+    private static final String TOTAL_AMOUNT_HEADER = resolveExcelHeader("totalAmount");
+    private static final String QUANTITY_HEADER = resolveExcelHeader("quantity");
+    private static final String JPY_PRICE_HEADER = resolveExcelHeader("jpyPrice");
+    private static final String BONUS_HEADER = resolveExcelHeader("bonus");
+    private static final String RECONCILED_HEADER = resolveExcelHeader("reconciled");
+    private static final String PURCHASED_HEADER = resolveExcelHeader("purchased");
+    private static final String ARRIVED_HEADER = resolveExcelHeader("arrived");
+    private static final String SHIPPED_HEADER = resolveExcelHeader("shipped");
+    private static final String PREORDER_STATUS_HEADER = resolveExcelHeader("preorderStatus");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
-            "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項", "日幣原價", "已採購", "出貨狀態"
-    );
+            RECONCILED_HEADER, DEPOSIT_AMOUNT_HEADER, BALANCE_AMOUNT_HEADER, TOTAL_AMOUNT_HEADER, BUYER_HEADER, ITEM_NAME_HEADER);
 
-    @Value("${app.google-sheet-url}")
-    private String googleSheetUrl;
+    @Value("${app.google-sheet-url:}")
+    private String legacyGoogleSheetUrl;
+
+    @Value("${app.preorder-google-sheet-url:}")
+    private String preorderGoogleSheetUrl;
+
+    @Value("${app.standard-google-sheet-url:}")
+    private String standardGoogleSheetUrl;
+
     @Value("${app.log-sheet-names:false}")
     private boolean logSheetNamesEnabled;
+
     @Value("${app.sheet-sync.stream-by-buyer:true}")
     private boolean streamByBuyer;
+
     @Value("${app.sheet-sync.max-rows-warn:5000}")
     private int maxRowsWarn;
+
     @Value("${app.sheet-sync.item-batch-size:200}")
     private int itemBatchSize;
+
     @Value("${app.sheet-sync.sheet-name-match-max-compare-length:64}")
     private int sheetNameMatchMaxCompareLength;
+
     @Value("${app.sheet-sync.sheet-name-match-min-compare-length:16}")
     private int sheetNameMatchMinCompareLength;
 
@@ -82,35 +114,40 @@ public class SheetSyncService {
     @Transactional
     public void syncFromCsv(Path csvPath, String explicitGroupName) {
         String groupName = resolveGroupName(csvPath, explicitGroupName);
+        String sourceKey = "csv";
 
         List<CSVRecord> records = readAllRecords(csvPath);
         int headerIndex = findHeaderIndex(records);
         if (headerIndex < 0) {
-            throw new IllegalStateException("找不到欄位表頭，請確認 CSV 欄位名稱是否正確。");
+            throw new IllegalStateException("CSV did not contain a supported header row: " + csvPath);
         }
 
         Map<String, Integer> headerIndexMap = buildHeaderIndex(records.get(headerIndex));
         boolean hasQueuedColumn = containsHeader(headerIndexMap, QUEUED_HEADER);
+        boolean hasPreorderStatusColumn = containsHeader(headerIndexMap, PREORDER_STATUS_HEADER);
         Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
 
         for (int i = headerIndex + 1; i < records.size(); i++) {
             CSVRecord record = records.get(i);
-            String buyerNickname = getValue(record, headerIndexMap, "團友");
-            String itemName = getValue(record, headerIndexMap, "品項");
+            String buyerNickname = getValue(record, headerIndexMap, BUYER_HEADER);
+            String itemName = getValue(record, headerIndexMap, ITEM_NAME_HEADER);
 
             if (isBlank(buyerNickname) || isBlank(itemName)) {
                 continue;
             }
 
+            GroupSourceType sourceType = hasPreorderStatusColumn ? GroupSourceType.PREORDER : GroupSourceType.STANDARD;
             OrderGroup group = groupByBuyer.computeIfAbsent(buyerNickname, key -> {
                 OrderGroup newGroup = new OrderGroup();
                 newGroup.setBuyerNickname(key);
                 newGroup.setGroupName(groupName);
+                newGroup.setSourceKey(sourceKey);
+                newGroup.setSourceType(sourceType);
                 newGroup.setLastUpdated(LocalDateTime.now());
                 return newGroup;
             });
 
-            Integer bonus = parseInteger(getValue(record, headerIndexMap, "特典"), null);
+            Integer bonus = parseInteger(getValue(record, headerIndexMap, BONUS_HEADER), null);
             if (bonus != null) {
                 int current = group.getBonusCount() == null ? 0 : group.getBonusCount();
                 if (bonus > current) {
@@ -119,103 +156,81 @@ public class SheetSyncService {
             }
 
             OrderItem item = new OrderItem();
-            String orderSn = getValue(record, headerIndexMap, "順位");
+            String orderSn = getValue(record, headerIndexMap, ORDER_RANK_HEADER);
             if (isBlank(orderSn)) {
-                orderSn = getValue(record, headerIndexMap, "喊單序");
+                orderSn = getValue(record, headerIndexMap, ORDER_SN_HEADER);
             }
             item.setOrderSn(orderSn);
-            item.setQueued(hasQueuedColumn
-                    ? parseBoolean(getValue(record, headerIndexMap, QUEUED_HEADER))
-                    : null);
-            item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, "未報到")));
-            item.setBalanceDueDate(getValue(record, headerIndexMap, "尾款日"));
-            String depositPaidDate = getValue(record, headerIndexMap, "付定日");
+            item.setQueued(hasQueuedColumn ? parseBoolean(getValue(record, headerIndexMap, QUEUED_HEADER)) : null);
+            item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, CHECKED_IN_HEADER)));
+            item.setBalanceDueDate(getValue(record, headerIndexMap, BALANCE_DUE_DATE_HEADER));
+            String depositPaidDate = getValue(record, headerIndexMap, DEPOSIT_PAID_DATE_HEADER);
             item.setDepositPaidDate(depositPaidDate);
-            String checkMark = getValue(record, headerIndexMap, "對");
+            String checkMark = getValue(record, headerIndexMap, CHECK_MARK_HEADER);
             if (isBlank(checkMark) && !isBlank(depositPaidDate)) {
                 checkMark = depositPaidDate;
             }
             item.setCheckMark(checkMark);
-            item.setDepositAmount(parseInteger(getValue(record, headerIndexMap, "定金80%"), 0));
-            item.setBalanceAmount(parseInteger(getValue(record, headerIndexMap, "尾款20%"), 0));
-            item.setTotalAmount(parseInteger(getValue(record, headerIndexMap, "購買總額"), 0));
+            item.setDepositAmount(parseInteger(getValue(record, headerIndexMap, DEPOSIT_AMOUNT_HEADER), 0));
+            item.setBalanceAmount(parseInteger(getValue(record, headerIndexMap, BALANCE_AMOUNT_HEADER), 0));
+            item.setTotalAmount(parseInteger(getValue(record, headerIndexMap, TOTAL_AMOUNT_HEADER), 0));
             item.setItemName(itemName);
-            item.setQuantity(parseInteger(getValue(record, headerIndexMap, "數量"), 1));
-            // 如果未來賣家又把數量塞回品項，可以改回這行。
-            // item.setQuantity(extractQuantity(itemName));
-            item.setJpyPrice(parseInteger(getValue(record, headerIndexMap, "日幣原價"), null));
+            item.setQuantity(parseInteger(getValue(record, headerIndexMap, QUANTITY_HEADER), 1));
+            item.setJpyPrice(parseInteger(getValue(record, headerIndexMap, JPY_PRICE_HEADER), null));
 
-            boolean isReconciled = parseBoolean(getValue(record, headerIndexMap, "對帳"));
-            boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, "已採購"));
-            boolean isArrived = parseBoolean(getValue(record, headerIndexMap, "抵台"));
-            boolean isShipped = parseBoolean(getValue(record, headerIndexMap, "出貨狀態"));
-            item.setItemStatus(StatusResolver.determine(isReconciled, isPurchased, isArrived, isShipped));
+            if (hasPreorderStatusColumn) {
+                item.setItemStatus(StatusResolver.determinePreorder(getValue(record, headerIndexMap, PREORDER_STATUS_HEADER)));
+            } else {
+                boolean isReconciled = parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER));
+                boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, PURCHASED_HEADER));
+                boolean isArrived = parseBoolean(getValue(record, headerIndexMap, ARRIVED_HEADER));
+                boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
+                item.setItemStatus(StatusResolver.determineLegacy(isReconciled, isPurchased, isArrived, isShipped));
+            }
 
             group.addItem(item);
         }
 
-        List<OrderGroup> existingGroups = null;
-        if (!isBlank(groupName)) {
-            existingGroups = orderGroupRepository.findByGroupName(groupName);
-        }
-
+        List<OrderGroup> existingGroups = orderGroupRepository.findByGroupNameAndSourceKey(groupName, sourceKey);
         orderGroupRepository.saveAll(groupByBuyer.values());
-        if (existingGroups != null && !existingGroups.isEmpty()) {
+        if (!existingGroups.isEmpty()) {
             orderGroupRepository.deleteAll(existingGroups);
         }
     }
 
     @Scheduled(fixedRate = 300000)
     public void syncFromGoogleSheetUrl() {
-        if (isBlank(googleSheetUrl)) {
+        syncFromGoogleSheets();
+    }
+
+    public void syncFromGoogleSheets() {
+        List<SyncSource> sources = resolveSyncSources();
+        if (sources.isEmpty()) {
             return;
         }
         if (!syncInProgress.compareAndSet(false, true)) {
-            log.warn("同步已在進行，略過本次排程");
+            log.warn("Sheet sync is already running.");
             return;
         }
 
+        int successCount = 0;
+        Exception firstFailure = null;
         try {
-        byte[] excelBytes = readExcelBytes(googleSheetUrl);
-        if (logSheetNamesEnabled) {
-            logSheetNames(excelBytes);
-        }
-        Map<String, Boolean> visibility = readSheetVisibility(excelBytes);
-        Set<String> visibleSheets = null;
-        if (visibility != null) {
-            visibleSheets = new HashSet<>();
-            for (Map.Entry<String, Boolean> entry : visibility.entrySet()) {
-                if (Boolean.TRUE.equals(entry.getValue())) {
-                    String normalized = SheetNameNormalizer.normalize(entry.getKey());
-                    if (!normalized.isEmpty()) {
-                        visibleSheets.add(normalized);
+            for (SyncSource source : sources) {
+                try {
+                    syncSource(source);
+                    successCount += 1;
+                } catch (Exception e) {
+                    if (firstFailure == null) {
+                        firstFailure = e;
                     }
+                    log.error("Failed to sync source {} from {}", source.sourceKey(), source.url(), e);
                 }
             }
-            log.info("設定分頁白名單(正規化後): {}", visibleSheets);
-        }
 
-        try (var inputStream = new ByteArrayInputStream(excelBytes)) {
-            SheetRowListener listener = new SheetRowListener(
-                    sheetSyncWriter,
-                    visibleSheets,
-                    streamByBuyer,
-                    maxRowsWarn,
-                    itemBatchSize,
-                    sheetNameMatchMaxCompareLength,
-                    sheetNameMatchMinCompareLength);
-            EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
-            log.info("實際同步分頁(正規化後): {}", listener.getProcessedSheets());
-            if (visibleSheets != null) {
-                if (listener.getProcessedSheets().isEmpty()) {
-                    log.warn("設定分頁有設定，但未同步到任何分頁，略過清除舊資料");
-                } else {
-                    deleteGroupsNotIn(visibleSheets);
-                }
+            if (successCount == 0 && firstFailure != null) {
+                throw new IllegalStateException("All Google Sheet sync sources failed.", firstFailure);
             }
-        }
-        } catch (Exception e) {
-            throw new IllegalStateException("Google Sheet Excel 讀取失敗：" + googleSheetUrl, e);
         } finally {
             syncInProgress.set(false);
         }
@@ -245,6 +260,52 @@ public class SheetSyncService {
         return 1;
     }
 
+    private void syncSource(SyncSource source) {
+        byte[] excelBytes = readExcelBytes(source.url());
+        if (logSheetNamesEnabled) {
+            logSheetNames(excelBytes);
+        }
+
+        Map<String, SheetSyncSheetConfig> sheetConfigs = readSheetConfigs(excelBytes);
+        Set<String> visibleSheets = extractVisibleSheets(sheetConfigs);
+
+        try (var inputStream = new ByteArrayInputStream(excelBytes)) {
+            SheetRowListener listener = new SheetRowListener(
+                    sheetSyncWriter,
+                    source.sourceKey(),
+                    source.defaultSourceType(),
+                    sheetConfigs,
+                    streamByBuyer,
+                    maxRowsWarn,
+                    itemBatchSize,
+                    sheetNameMatchMaxCompareLength,
+                    sheetNameMatchMinCompareLength);
+            EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
+            log.info("Synced source {} sheets={}", source.sourceKey(), listener.getProcessedSheets());
+            if (visibleSheets != null) {
+                if (listener.getProcessedSheets().isEmpty()) {
+                    log.warn("Source {} had visible sheets configured but none were processed.", source.sourceKey());
+                } else {
+                    deleteGroupsNotIn(source.sourceKey(), visibleSheets);
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read workbook stream for source " + source.sourceKey(), e);
+        }
+    }
+
+    private List<SyncSource> resolveSyncSources() {
+        List<SyncSource> sources = new ArrayList<>();
+        if (!isBlank(preorderGoogleSheetUrl)) {
+            sources.add(new SyncSource("preorder", preorderGoogleSheetUrl.trim(), GroupSourceType.PREORDER));
+        }
+        String standardUrl = !isBlank(standardGoogleSheetUrl) ? standardGoogleSheetUrl : legacyGoogleSheetUrl;
+        if (!isBlank(standardUrl)) {
+            sources.add(new SyncSource("standard", standardUrl.trim(), GroupSourceType.STANDARD));
+        }
+        return sources;
+    }
+
     private List<CSVRecord> readAllRecords(Path csvPath) {
         CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setTrim(true)
@@ -255,21 +316,7 @@ public class SheetSyncService {
              CSVParser parser = new CSVParser(reader, format)) {
             return parser.getRecords();
         } catch (IOException e) {
-            throw new IllegalStateException("CSV 讀取失敗：" + csvPath, e);
-        }
-    }
-
-    private List<CSVRecord> readAllRecordsFromUrl(String csvUrl) {
-        CSVFormat format = CSVFormat.DEFAULT.builder()
-                .setTrim(true)
-                .setIgnoreEmptyLines(true)
-                .build();
-
-        try (Reader reader = new InputStreamReader(new URL(csvUrl).openStream(), StandardCharsets.UTF_8);
-             CSVParser parser = new CSVParser(reader, format)) {
-            return parser.getRecords();
-        } catch (IOException e) {
-            throw new IllegalStateException("Google Sheet CSV 讀取失敗：" + csvUrl, e);
+            throw new IllegalStateException("Failed to read CSV: " + csvPath, e);
         }
     }
 
@@ -372,48 +419,72 @@ public class SheetSyncService {
     }
 
     private byte[] readExcelBytes(String url) {
-        try (var inputStream = new URL(url).openStream()) {
-            return inputStream.readAllBytes();
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            connection.setInstanceFollowRedirects(true);
+            try (var inputStream = connection.getInputStream()) {
+                return inputStream.readAllBytes();
+            }
         } catch (IOException e) {
-            throw new IllegalStateException("Google Sheet Excel 下載失敗：" + url, e);
+            throw new IllegalStateException("Failed to download Google Sheet Excel: " + url, e);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
-    private Map<String, Boolean> readSheetVisibility(byte[] excelBytes) {
+    private Map<String, SheetSyncSheetConfig> readSheetConfigs(byte[] excelBytes) {
         for (String sheetName : SETTINGS_SHEET_NAMES) {
-            Map<String, Boolean> result = tryReadVisibility(excelBytes, sheetName);
+            Map<String, SheetSyncSheetConfig> result = tryReadSheetConfig(excelBytes, sheetName);
             if (result != null) {
                 return result;
             }
         }
-        log.info("找不到設定/分頁分頁或讀取失敗，將同步所有分頁");
+        log.info("No settings sheet was found; syncing all compatible sheets.");
         return null;
     }
 
-    private Map<String, Boolean> tryReadVisibility(byte[] excelBytes, String sheetName) {
+    private Map<String, SheetSyncSheetConfig> tryReadSheetConfig(byte[] excelBytes, String sheetName) {
         try (var inputStream = new ByteArrayInputStream(excelBytes)) {
             SheetVisibilityListener listener = new SheetVisibilityListener();
             EasyExcel.read(inputStream, SheetVisibilityRow.class, listener)
                     .sheet(sheetName)
                     .headRowNumber(1)
                     .doRead();
-            Map<String, Boolean> result = listener.getVisibilityBySheet();
+            Map<String, SheetSyncSheetConfig> result = listener.getConfigBySheet();
             if (result.isEmpty()) {
-                log.info("設定分頁 {} 為空，將同步所有分頁", sheetName);
+                log.info("Settings sheet {} was present but empty.", sheetName);
                 return null;
             }
-            log.info("使用設定分頁 {} 進行同步白名單", sheetName);
+            log.info("Loaded settings sheet {} entries={}", sheetName, result.keySet());
             return result;
         } catch (Exception e) {
             return null;
         }
     }
 
-    private void deleteGroupsNotIn(Set<String> visibleSheets) {
+    private Set<String> extractVisibleSheets(Map<String, SheetSyncSheetConfig> sheetConfigs) {
+        if (sheetConfigs == null || sheetConfigs.isEmpty()) {
+            return null;
+        }
+        Set<String> visibleSheets = new HashSet<>();
+        for (Map.Entry<String, SheetSyncSheetConfig> entry : sheetConfigs.entrySet()) {
+            if (entry.getValue().isVisible()) {
+                visibleSheets.add(entry.getKey());
+            }
+        }
+        return visibleSheets;
+    }
+
+    private void deleteGroupsNotIn(String sourceKey, Set<String> visibleSheets) {
         if (visibleSheets == null) {
             return;
         }
-        List<OrderGroup> allGroups = orderGroupRepository.findAll();
+        List<OrderGroup> allGroups = orderGroupRepository.findBySourceKey(sourceKey);
         if (allGroups.isEmpty()) {
             return;
         }
@@ -437,7 +508,7 @@ public class SheetSyncService {
              Workbook workbook = WorkbookFactory.create(inputStream)) {
             int count = workbook.getNumberOfSheets();
             if (count == 0) {
-                log.warn("Excel 沒有任何分頁");
+                log.warn("Excel workbook contained no sheets.");
                 return;
             }
             List<String> sheetNames = new ArrayList<>();
@@ -447,10 +518,10 @@ public class SheetSyncService {
                 sheetNames.add(name);
                 normalized.add(SheetNameNormalizer.normalize(name));
             }
-            log.info("Excel 分頁名稱: {}", sheetNames);
-            log.info("Excel 分頁名稱(正規化後): {}", normalized);
+            log.info("Excel sheet names: {}", sheetNames);
+            log.info("Excel normalized sheet names: {}", normalized);
         } catch (Exception e) {
-            log.warn("讀取 Excel 分頁名稱失敗", e);
+            log.warn("Failed to inspect workbook sheet names.", e);
         }
     }
 
@@ -468,5 +539,8 @@ public class SheetSyncService {
             }
         }
         return false;
+    }
+
+    private record SyncSource(String sourceKey, String url, GroupSourceType defaultSourceType) {
     }
 }

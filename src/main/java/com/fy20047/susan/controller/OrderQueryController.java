@@ -32,16 +32,15 @@ public class OrderQueryController {
         String normalized = nickname == null ? "" : nickname.trim();
         if (normalized.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("INVALID_REQUEST", "nickname 不能為空"));
+                    .body(ApiResponse.error("INVALID_REQUEST", "nickname is required."));
         }
 
         List<OrderGroup> groups = orderGroupRepository.findByBuyerNicknameWithItems(normalized);
         if (groups.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(ApiResponse.error("NOT_FOUND", "查無相關訂單"));
+                    .body(ApiResponse.error("NOT_FOUND", "查無符合的訂單資料。"));
         }
 
-        // 以大小寫完全相同為準，避免資料庫預設不分大小寫
         List<OrderGroup> exactGroups = new ArrayList<>();
         for (OrderGroup group : groups) {
             if (normalized.equals(group.getBuyerNickname())) {
@@ -50,7 +49,7 @@ public class OrderQueryController {
         }
         if (exactGroups.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(ApiResponse.error("NOT_FOUND", "查無相關訂單"));
+                    .body(ApiResponse.error("NOT_FOUND", "查無符合的訂單資料。"));
         }
 
         List<OrderGroupDto> result = new ArrayList<>();
@@ -59,6 +58,8 @@ public class OrderQueryController {
             dto.setId(group.getId());
             dto.setBuyerNickname(group.getBuyerNickname());
             dto.setGroupName(group.getGroupName());
+            dto.setSourceKey(group.getSourceKey());
+            dto.setSourceType(group.getSourceType());
             dto.setLastUpdated(group.getLastUpdated());
             dto.setTotalAmount(group.getTotalAmount());
             dto.setTotalBalance(group.getTotalBalance());

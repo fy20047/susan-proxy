@@ -15,4 +15,10 @@ public class SheetVisibilityRow {
 
     @ExcelProperty("顯示")
     private String visible;
+
+    @ExcelProperty("受注")
+    private String preorder;
+
+    @ExcelProperty("模式")
+    private String mode;
 }

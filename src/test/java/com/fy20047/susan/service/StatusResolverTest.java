@@ -9,15 +9,22 @@ class StatusResolverTest {
 
     @Test
     void shouldRemainPendingDepositWhenArrivedCheckedButNotReconciled() {
-        ItemStatus status = StatusResolver.determine(false, true, true, false);
+        ItemStatus status = StatusResolver.determineLegacy(false, true, true, false);
 
         assertEquals(ItemStatus.PENDING_DEPOSIT, status);
     }
 
     @Test
     void shouldBeArrivedOnlyWhenReconciledAndPurchased() {
-        ItemStatus status = StatusResolver.determine(true, true, true, false);
+        ItemStatus status = StatusResolver.determineLegacy(true, true, true, false);
 
         assertEquals(ItemStatus.ARRIVED, status);
+    }
+
+    @Test
+    void shouldMapPreorderStatus() {
+        ItemStatus status = StatusResolver.determinePreorder("轉送中");
+
+        assertEquals(ItemStatus.PREORDER_FORWARDING, status);
     }
 }

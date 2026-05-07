@@ -1,11 +1,24 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowLeft, Package, Search } from "lucide-react";
 import { fetchOrders } from "./api/orders";
 import { recordPageView } from "./api/pageViews";
 import OrderCard from "./components/OrderCard";
-import { STATUS_FILTERS, toOrderStatusLabel } from "./status";
-import { buildOrderView } from "./transform";
-import { ItemStatusCode, OrderView, PageViewStats } from "./types";
+import {
+  matchesPreorderFilters,
+  PREORDER_ITEM_FILTERS,
+  PREORDER_SHIPPING_FILTERS,
+  STANDARD_STATUS_FILTERS,
+  toShippingStatusLabel,
+  toStandardOrderStatusLabel
+} from "./status";
+import { buildOrderView, rebuildOrderView } from "./transform";
+import {
+  OrderView,
+  PageViewStats,
+  PreorderItemStatusCode,
+  ShippingStatusCode,
+  StandardItemStatusCode
+} from "./types";
 import logo from "./image/logo1.png";
 import icon from "./image/icon.png";
 
@@ -15,7 +28,9 @@ export default function App() {
   const [currentSearchName, setCurrentSearchName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [orders, setOrders] = useState<OrderView[]>([]);
-  const [activeTab, setActiveTab] = useState<ItemStatusCode | "ALL">("ALL");
+  const [standardFilter, setStandardFilter] = useState<StandardItemStatusCode | "ALL">("ALL");
+  const [preorderItemFilter, setPreorderItemFilter] = useState<PreorderItemStatusCode | "ALL">("ALL");
+  const [preorderShippingFilter, setPreorderShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
   const [pageViews, setPageViews] = useState<PageViewStats | null>(null);
 
@@ -25,41 +40,46 @@ export default function App() {
       .catch(() => setPageViews(null));
   }, []);
 
-  const filteredOrders = useMemo(() => {
-    if (activeTab === "ALL") return orders;
+  const preorderOrders = useMemo(
+    () => orders.filter((order) => order.sourceType === "PREORDER"),
+    [orders]
+  );
+  const standardOrders = useMemo(
+    () => orders.filter((order) => order.sourceType !== "PREORDER"),
+    [orders]
+  );
 
-    const label = toOrderStatusLabel(activeTab);
+  const filteredPreorderOrders = useMemo(() => {
+    if (preorderItemFilter === "ALL" && preorderShippingFilter === "ALL") {
+      return preorderOrders;
+    }
 
-    return orders.reduce<OrderView[]>((acc, order) => {
-      const items = order.items.filter((item) => item.statusCode === activeTab);
-      if (items.length === 0) return acc;
-
-      const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0);
-      const depositAmount = items.reduce((sum, item) => sum + item.depositAmount, 0);
-      const paidDepositAmount = items.reduce(
-        (sum, item) => sum + (item.isDepositPaid ? item.depositAmount : 0),
-        0
+    return preorderOrders.reduce<OrderView[]>((acc, order) => {
+      const items = order.items.filter((item) =>
+        matchesPreorderFilters(item, preorderItemFilter, preorderShippingFilter)
       );
-      const pendingDepositAmount = items.reduce(
-        (sum, item) => sum + (item.isDepositPaid ? 0 : item.depositAmount),
-        0
-      );
-      const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
-
-      acc.push({
-        ...order,
-        statusCode: activeTab,
-        status: label,
-        items,
-        totalAmount,
-        depositAmount,
-        paidDepositAmount,
-        pendingDepositAmount,
-        balanceAmount
-      });
+      if (!items.length) {
+        return acc;
+      }
+      acc.push(rebuildOrderView(order, items));
       return acc;
     }, []);
-  }, [orders, activeTab]);
+  }, [preorderOrders, preorderItemFilter, preorderShippingFilter]);
+
+  const filteredStandardOrders = useMemo(() => {
+    if (standardFilter === "ALL") {
+      return standardOrders;
+    }
+
+    return standardOrders.reduce<OrderView[]>((acc, order) => {
+      const items = order.items.filter((item) => item.statusCode === standardFilter);
+      if (!items.length) {
+        return acc;
+      }
+      acc.push(rebuildOrderView(order, items));
+      return acc;
+    }, []);
+  }, [standardOrders, standardFilter]);
 
   const lastUpdatedLabel = useMemo(() => {
     const timestamps = orders
@@ -67,13 +87,24 @@ export default function App() {
       .filter((value): value is string => Boolean(value))
       .map((value) => new Date(value))
       .filter((date) => !Number.isNaN(date.getTime()));
-    if (timestamps.length === 0) return null;
+    if (!timestamps.length) {
+      return null;
+    }
     const latest = new Date(Math.max(...timestamps.map((date) => date.getTime())));
     return latest.toLocaleString("zh-TW", { hour12: false });
   }, [orders]);
 
-  const showStatus = activeTab !== "ALL";
-  const emptyLabel = activeTab === "ALL" ? "全部" : toOrderStatusLabel(activeTab);
+  const showPreorderStatus =
+    preorderItemFilter !== "ALL" || preorderShippingFilter !== "ALL";
+  const showStandardStatus = standardFilter !== "ALL";
+  const preorderEmptyLabel =
+    preorderShippingFilter !== "ALL"
+      ? toShippingStatusLabel(preorderShippingFilter)
+      : preorderItemFilter === "ALL"
+        ? "全部"
+        : PREORDER_ITEM_FILTERS.find((filter) => filter.key === preorderItemFilter)?.label ?? "全部";
+  const standardEmptyLabel =
+    standardFilter === "ALL" ? "全部" : toStandardOrderStatusLabel(standardFilter);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +122,9 @@ export default function App() {
       setOrders(views);
       setCurrentSearchName(normalized);
       setCurrentPage("results");
-      setActiveTab("ALL");
+      setStandardFilter("ALL");
+      setPreorderItemFilter("ALL");
+      setPreorderShippingFilter("ALL");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "搜尋發生錯誤，請稍後再試。";
@@ -200,18 +233,14 @@ export default function App() {
                 <span className="hidden xs:inline">返回查詢</span>
               </button>
               <div className="flex flex-row items-end flex-1 justify-end">
-                <div
-                  className="shrink-0 z-10 relative -mb-[21px] order-2"
-                >
+                <div className="shrink-0 z-10 relative -mb-[21px] order-2">
                   <img
                     src={icon}
                     alt="訂單圖示"
                     className="h-20 md:h-20 w-auto object-contain block"
                   />
                 </div>
-                <h2
-                  className="text-2xl md:text-3xl font-black leading-tight text-right order-1 pr-1"
-                >
+                <h2 className="text-2xl md:text-3xl font-black leading-tight text-right order-1 pr-1">
                   <span>
                     『
                     <span className="text-[#BC4A3C] underline decoration-[#D9A036] decoration-4 underline-offset-4">
@@ -231,42 +260,103 @@ export default function App() {
               </div>
             )}
 
-            <div className="mb-8 overflow-x-auto pb-4 hide-scrollbar">
-              <div className="flex gap-3 min-w-max px-1">
-                {STATUS_FILTERS.map((status) => (
-                  <button
-                    key={status.key}
-                    onClick={() => setActiveTab(status.key)}
-                    className={`
-                      px-5 py-2 font-black border-2 border-[#2C1E16] transition-all
-                      ${
-                        activeTab === status.key
-                          ? "bg-[#2A5C5B] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[2px] translate-x-[2px]"
-                          : "bg-white text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:bg-[#F5F0E6] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[3px_3px_0px_#2C1E16]"
-                      }
-                    `}
-                  >
-                    {status.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              {filteredOrders.length > 0 ? (
-                filteredOrders.map((order) => (
-                  <OrderCard key={order.id} order={order} showStatus={showStatus} />
-                ))
-              ) : (
-                <div className="text-center py-16 bg-white border-4 border-dashed border-[#2C1E16]">
-                  <Package size={48} className="mx-auto mb-4 text-[#D9A036] opacity-50" />
-                  <h3 className="text-xl font-black text-[#2C1E16] mb-2">查無相關狀態的訂單</h3>
-                  <p className="font-bold text-[#2A5C5B]">
-                    目前「{emptyLabel}」分類下沒有任何紀錄喔！
-                  </p>
+            {preorderOrders.length > 0 && (
+              <section className="mb-12">
+                <div className="mb-4 flex items-center justify-between gap-4 border-l-4 border-[#BC4A3C] pl-4">
+                  <h3 className="text-xl md:text-2xl font-black">受注團</h3>
+                  {/*<span className="text-sm font-bold text-[#2A5C5B]">*/}
+                  {/*  依貨況與出貨狀態篩選*/}
+                  {/*</span>*/}
                 </div>
-              )}
-            </div>
+
+                <div className="mb-4 overflow-x-auto pb-2 hide-scrollbar">
+                  <div className="mb-2 px-1 text-base font-black text-[#2C1E16]">
+                    商品貨況
+                  </div>
+                  <div className="flex gap-3 min-w-max px-1">
+                    {PREORDER_ITEM_FILTERS.map((status) => (
+                      <button
+                        key={status.key}
+                        onClick={() => setPreorderItemFilter(status.key)}
+                        className={`px-5 py-2 font-black border-2 border-[#2C1E16] transition-all ${
+                          preorderItemFilter === status.key
+                            ? "bg-[#2A5C5B] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[2px] translate-x-[2px]"
+                            : "bg-white text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:bg-[#F5F0E6] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[3px_3px_0px_#2C1E16]"
+                        }`}
+                      >
+                        {status.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mb-8 overflow-x-auto pb-4 hide-scrollbar">
+                  <div className="mb-2 px-1 text-base font-black text-[#2C1E16]">
+                    出貨狀態
+                  </div>
+                  <div className="flex gap-3 min-w-max px-1">
+                    {PREORDER_SHIPPING_FILTERS.map((status) => (
+                      <button
+                        key={status.key}
+                        onClick={() => setPreorderShippingFilter(status.key)}
+                        className={`px-5 py-2 font-black border-2 border-[#2C1E16] transition-all ${
+                          preorderShippingFilter === status.key
+                            ? "bg-[#BC4A3C] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[2px] translate-x-[2px]"
+                            : "bg-white text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:bg-[#F5F0E6] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[3px_3px_0px_#2C1E16]"
+                        }`}
+                      >
+                        {status.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredPreorderOrders.length > 0 ? (
+                  filteredPreorderOrders.map((order) => (
+                    <OrderCard key={order.id} order={order} showStatus={showPreorderStatus} />
+                  ))
+                ) : (
+                  <EmptyState label={preorderEmptyLabel} />
+                )}
+              </section>
+            )}
+
+            {standardOrders.length > 0 && (
+              <section>
+                <div className="mb-4 flex items-center justify-between gap-4 border-l-4 border-[#2A5C5B] pl-4">
+                  <h3 className="text-xl md:text-2xl font-black">一般團</h3>
+                  {/*<span className="text-sm font-bold text-[#2A5C5B]">*/}
+                  {/*  維持原本狀態篩選*/}
+                  {/*</span>*/}
+                </div>
+
+                <div className="mb-8 overflow-x-auto pb-4 hide-scrollbar">
+                  <div className="flex gap-3 min-w-max px-1">
+                    {STANDARD_STATUS_FILTERS.map((status) => (
+                      <button
+                        key={status.key}
+                        onClick={() => setStandardFilter(status.key)}
+                        className={`px-5 py-2 font-black border-2 border-[#2C1E16] transition-all ${
+                          standardFilter === status.key
+                            ? "bg-[#2A5C5B] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[2px] translate-x-[2px]"
+                            : "bg-white text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:bg-[#F5F0E6] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[3px_3px_0px_#2C1E16]"
+                        }`}
+                      >
+                        {status.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredStandardOrders.length > 0 ? (
+                  filteredStandardOrders.map((order) => (
+                    <OrderCard key={order.id} order={order} showStatus={showStandardStatus} />
+                  ))
+                ) : (
+                  <EmptyState label={standardEmptyLabel} />
+                )}
+              </section>
+            )}
           </div>
         </div>
       )}
@@ -278,6 +368,16 @@ export default function App() {
           瀏覽量：今日 {pageViews?.daily ?? "--"} / 本周 {pageViews?.weekly ?? "--"} / 本月 {pageViews?.monthly ?? "--"} / 總計 {pageViews?.total ?? "--"}
         </p>
       </footer>
+    </div>
+  );
+}
+
+function EmptyState({ label }: { label: string }) {
+  return (
+    <div className="text-center py-16 bg-white border-4 border-dashed border-[#2C1E16]">
+      <Package size={48} className="mx-auto mb-4 text-[#D9A036] opacity-50" />
+      <h3 className="text-xl font-black text-[#2C1E16] mb-2">查無相關狀態的訂單</h3>
+      <p className="font-bold text-[#2A5C5B]">目前「{label}」分類下沒有任何紀錄喔！</p>
     </div>
   );
 }

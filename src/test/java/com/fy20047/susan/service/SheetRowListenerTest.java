@@ -2,6 +2,7 @@ package com.fy20047.susan.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.read.metadata.holder.ReadRowHolder;
 import com.alibaba.excel.read.metadata.holder.ReadSheetHolder;
+import com.fy20047.susan.domain.GroupSourceType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -21,14 +23,23 @@ class SheetRowListenerTest {
         SheetSyncWriter writer = mock(SheetSyncWriter.class);
         when(writer.createGroup(any())).thenReturn(1L);
 
-        SheetRowListener listener = new SheetRowListener(writer, null, true, 100, 10, 64, 16);
-        AnalysisContext context = mockContext("0430快閃【我英原畫展】");
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("0430測試團");
 
         listener.invokeHeadMap(headerMapWithoutJpyPrice(), context);
 
         SheetRowDto row = new SheetRowDto();
         row.setBuyerNickname("Christy");
-        row.setItemName("綠谷背影立牌");
+        row.setItemName("測試商品");
         row.setDepositAmount(376);
         row.setBalanceAmount(94);
         row.setTotalAmount(470);
@@ -40,7 +51,7 @@ class SheetRowListenerTest {
         listener.invoke(row, context);
         listener.doAfterAllAnalysed(context);
 
-        verify(writer).prepareReplace("0430快閃【我英原畫展】");
+        verify(writer).prepareReplace("0430測試團", "standard");
         verify(writer).createGroup(any());
         verify(writer).saveItems(anyList());
     }
@@ -49,22 +60,61 @@ class SheetRowListenerTest {
     void skipsSheetWhenRequiredHeaderIsMissing() {
         SheetSyncWriter writer = mock(SheetSyncWriter.class);
         SheetRowListener listener = new SheetRowListener(writer, null, true, 100, 10, 64, 16);
-        AnalysisContext context = mockContext("缺欄位測試");
+        AnalysisContext context = mockContext("缺欄位分頁");
 
         Map<Integer, String> headers = headerMapWithoutJpyPrice();
-        headers.values().remove("出貨狀態");
+        headers.values().remove("對帳");
 
         listener.invokeHeadMap(headers, context);
 
         SheetRowDto row = new SheetRowDto();
         row.setBuyerNickname("Christy");
-        row.setItemName("綠谷背影立牌");
+        row.setItemName("測試商品");
         listener.invoke(row, context);
         listener.doAfterAllAnalysed(context);
 
-        verify(writer, never()).prepareReplace(any());
+        verify(writer, never()).prepareReplace(any(), any());
         verify(writer, never()).createGroup(any());
         verify(writer, never()).saveItems(anyList());
+    }
+
+    @Test
+    void usesPreorderStatusWhenConfigured() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        when(writer.createGroup(any())).thenReturn(1L);
+
+        Map<String, SheetSyncSheetConfig> sheetConfigs = new LinkedHashMap<>();
+        sheetConfigs.put("受注測試團", new SheetSyncSheetConfig(true, true));
+
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "preorder",
+                GroupSourceType.PREORDER,
+                sheetConfigs,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("受注測試團");
+
+        listener.invokeHeadMap(preorderHeaderMap(), context);
+
+        SheetRowDto row = new SheetRowDto();
+        row.setBuyerNickname("Buyer");
+        row.setItemName("商品");
+        row.setDepositAmount(100);
+        row.setBalanceAmount(50);
+        row.setTotalAmount(150);
+        row.setQuantity(1);
+        row.setPreorderStatus("已抵台");
+
+        listener.invoke(row, context);
+        listener.doAfterAllAnalysed(context);
+
+        verify(writer).prepareReplace("受注測試團", "preorder");
+        verify(writer).createGroup(any());
+        verify(writer).saveItems(anyList());
     }
 
     private static AnalysisContext mockContext(String sheetName) {
@@ -88,21 +138,25 @@ class SheetRowListenerTest {
         headers.put(5, "尾款20%");
         headers.put(6, "購買總額");
         headers.put(7, "團友");
-        headers.put(8, "喊單序");
-        headers.put(9, "順位");
+        headers.put(8, "順位");
+        headers.put(9, "喊單序");
         headers.put(10, "已採購");
         headers.put(11, "品項");
         headers.put(12, "數量");
         headers.put(13, "特典");
         headers.put(14, "台幣單價");
-        headers.put(15, "折扣");
-        headers.put(16, "台總額");
+        headers.put(15, "購買地點");
+        headers.put(16, "備註");
         headers.put(17, "IP");
-        headers.put(18, "未報到");
-        headers.put(19, "抵台");
-        headers.put(20, "出貨狀態");
-        headers.put(21, "喊單日");
-        headers.put(22, "備註");
+        headers.put(18, "抵台");
+        headers.put(19, "出貨狀態");
+        headers.put(20, "喊單日");
+        return headers;
+    }
+
+    private static Map<Integer, String> preorderHeaderMap() {
+        Map<Integer, String> headers = headerMapWithoutJpyPrice();
+        headers.put(13, "貨況");
         return headers;
     }
 }

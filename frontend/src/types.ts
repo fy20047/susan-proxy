@@ -1,4 +1,4 @@
-﻿export type ApiError = {
+export type ApiError = {
   code: string;
   message: string;
 };
@@ -17,7 +17,9 @@ export type PageViewStats = {
   total: number;
 };
 
-export type ItemStatusCode =
+export type SourceType = "STANDARD" | "PREORDER";
+
+export type StandardItemStatusCode =
   | "REGISTERED"
   | "PENDING_DEPOSIT"
   | "PENDING_PURCHASE"
@@ -25,7 +27,20 @@ export type ItemStatusCode =
   | "ARRIVED"
   | "SHIPPED";
 
-export type OrderStatus =
+export type PreorderItemStatusCode =
+  | "PREORDER_REGISTERED"
+  | "PREORDER_PENDING_PURCHASE"
+  | "PREORDER_PENDING_DEPOSIT"
+  | "PREORDER_PURCHASED"
+  | "PREORDER_FORWARDING"
+  | "PREORDER_ARRIVED"
+  | "PREORDER_SHIPPED";
+
+export type ItemStatusCode = StandardItemStatusCode | PreorderItemStatusCode;
+
+export type ShippingStatusCode = "NOT_ARRIVED" | "READY_TO_SHIP" | "SHIPPED";
+
+export type StandardOrderStatus =
   | "已登記"
   | "待匯定"
   | "待購入"
@@ -33,7 +48,20 @@ export type OrderStatus =
   | "已抵台待出貨"
   | "已出貨";
 
-export type ItemStatusLabel = OrderStatus;
+export type PreorderItemStatusLabel =
+  | "已登記"
+  | "待購入"
+  | "待匯定"
+  | "已購入"
+  | "轉送中"
+  | "已抵台"
+  | "已出貨";
+
+export type ShippingStatusLabel = "尚未抵台" | "可下單等待出貨" | "已出貨";
+
+export type ItemStatusLabel = StandardOrderStatus | PreorderItemStatusLabel;
+export type SummaryStatusCode = StandardItemStatusCode | ShippingStatusCode;
+export type SummaryStatusLabel = StandardOrderStatus | ShippingStatusLabel;
 
 export type ApiOrderItem = {
   id: number;
@@ -56,6 +84,8 @@ export type ApiOrderGroup = {
   id: number;
   buyerNickname: string;
   groupName?: string;
+  sourceKey?: string;
+  sourceType?: SourceType;
   lastUpdated?: string;
   totalAmount?: number;
   totalBalance?: number;
@@ -78,14 +108,18 @@ export type OrderItemView = {
   jpyPrice?: number;
   statusCode: ItemStatusCode;
   status: ItemStatusLabel;
+  shippingStatusCode?: ShippingStatusCode;
+  shippingStatus?: ShippingStatusLabel;
 };
 
 export type OrderView = {
   id: number;
+  sourceType: SourceType;
+  sourceKey?: string;
   groupName: string;
   buyerNickname: string;
-  statusCode: ItemStatusCode;
-  status: OrderStatus;
+  summaryStatusCode: SummaryStatusCode;
+  summaryStatus: SummaryStatusLabel;
   bonusCount: number;
   items: OrderItemView[];
   totalAmount: number;

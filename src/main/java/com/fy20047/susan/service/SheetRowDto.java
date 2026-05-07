@@ -31,16 +31,16 @@ public class SheetRowDto {
     @ExcelProperty("團友")
     private String buyerNickname;
 
-    @ExcelProperty("未報到")
+    @ExcelProperty("對")
     private String checkedIn;
 
-    @ExcelProperty("喊單序")
+    @ExcelProperty("順位")
     private String orderSn;
 
-    @ExcelProperty("順位")
+    @ExcelProperty("喊單序")
     private String orderRank;
 
-    @ExcelProperty("是否排到")
+    @ExcelProperty("已排到")
     private String queued;
 
     @ExcelProperty("品項")
@@ -73,7 +73,10 @@ public class SheetRowDto {
     @ExcelProperty("特典")
     private String bonus;
 
-    @ExcelProperty("對")
+    @ExcelProperty("貨況")
+    private String preorderStatus;
+
+    @ExcelProperty("備註")
     private String checkMark;
 
     @ExcelProperty("喊單日")

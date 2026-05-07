@@ -1,20 +1,22 @@
 package com.fy20047.susan.dto;
 
+import com.fy20047.susan.domain.GroupSourceType;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-// 資料傳輸物件 (DTO) 只負責裝資料，不負責跟資料庫連線。
 public class OrderGroupDto {
 
     private Long id;
     private String buyerNickname;
     private String groupName;
+    private String sourceKey;
+    private GroupSourceType sourceType;
     private LocalDateTime lastUpdated;
     private Integer totalAmount;
     private Integer totalBalance;
     private Integer bonusCount;
-    private List<OrderItemDto> items = new ArrayList<>(); // 裝的是 OrderItemDto 而不是 Entity
+    private List<OrderItemDto> items = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -38,6 +40,22 @@ public class OrderGroupDto {
 
     public void setGroupName(String groupName) {
         this.groupName = groupName;
+    }
+
+    public String getSourceKey() {
+        return sourceKey;
+    }
+
+    public void setSourceKey(String sourceKey) {
+        this.sourceKey = sourceKey;
+    }
+
+    public GroupSourceType getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(GroupSourceType sourceType) {
+        this.sourceType = sourceType;
     }
 
     public LocalDateTime getLastUpdated() {

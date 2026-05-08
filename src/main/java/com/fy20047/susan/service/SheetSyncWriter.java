@@ -99,7 +99,7 @@ public class SheetSyncWriter {
         if (sourceKey == null || sourceKey.isBlank()) {
             return orderGroupRepository.findByGroupName(groupName);
         }
-        return orderGroupRepository.findByGroupNameAndSourceKey(groupName, sourceKey);
+        return orderGroupRepository.findByGroupNameAndSourceKeyIncludingLegacy(groupName, sourceKey);
     }
 
     private void attachGroupReferences(List<OrderItem> items) {

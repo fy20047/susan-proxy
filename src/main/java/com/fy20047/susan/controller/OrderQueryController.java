@@ -7,7 +7,9 @@ import com.fy20047.susan.dto.OrderGroupDto;
 import com.fy20047.susan.dto.OrderItemDto;
 import com.fy20047.susan.repository.OrderGroupRepository;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,7 +55,7 @@ public class OrderQueryController {
         }
 
         List<OrderGroupDto> result = new ArrayList<>();
-        for (OrderGroup group : exactGroups) {
+        for (OrderGroup group : collapseLegacyDuplicates(exactGroups)) {
             OrderGroupDto dto = new OrderGroupDto();
             dto.setId(group.getId());
             dto.setBuyerNickname(group.getBuyerNickname());
@@ -89,5 +91,44 @@ public class OrderQueryController {
         }
 
         return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    private List<OrderGroup> collapseLegacyDuplicates(List<OrderGroup> groups) {
+        Map<String, OrderGroup> byDisplayKey = new LinkedHashMap<>();
+        for (OrderGroup group : groups) {
+            String key = buildDisplayKey(group);
+            OrderGroup existing = byDisplayKey.get(key);
+            if (existing == null || shouldReplaceLegacy(existing, group)) {
+                byDisplayKey.put(key, group);
+            }
+        }
+        return new ArrayList<>(byDisplayKey.values());
+    }
+
+    private String buildDisplayKey(OrderGroup group) {
+        String buyerNickname = group.getBuyerNickname() == null ? "" : group.getBuyerNickname().trim();
+        String groupName = group.getGroupName() == null ? "" : group.getGroupName().trim();
+        String sourceType = group.getSourceType() == null ? "" : group.getSourceType().name();
+        return buyerNickname + "\n" + groupName + "\n" + sourceType;
+    }
+
+    private boolean shouldReplaceLegacy(OrderGroup existing, OrderGroup candidate) {
+        boolean existingLegacy = isLegacySource(existing);
+        boolean candidateLegacy = isLegacySource(candidate);
+        if (existingLegacy != candidateLegacy) {
+            return existingLegacy;
+        }
+        if (existing.getLastUpdated() == null) {
+            return candidate.getLastUpdated() != null;
+        }
+        if (candidate.getLastUpdated() == null) {
+            return false;
+        }
+        return candidate.getLastUpdated().isAfter(existing.getLastUpdated());
+    }
+
+    private boolean isLegacySource(OrderGroup group) {
+        String sourceKey = group.getSourceKey();
+        return sourceKey == null || sourceKey.trim().isEmpty();
     }
 }

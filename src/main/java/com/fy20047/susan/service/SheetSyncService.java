@@ -191,7 +191,7 @@ public class SheetSyncService {
             group.addItem(item);
         }
 
-        List<OrderGroup> existingGroups = orderGroupRepository.findByGroupNameAndSourceKey(groupName, sourceKey);
+        List<OrderGroup> existingGroups = orderGroupRepository.findByGroupNameAndSourceKeyIncludingLegacy(groupName, sourceKey);
         orderGroupRepository.saveAll(groupByBuyer.values());
         if (!existingGroups.isEmpty()) {
             orderGroupRepository.deleteAll(existingGroups);

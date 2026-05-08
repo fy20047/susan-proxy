@@ -15,5 +15,19 @@ public interface OrderGroupRepository extends JpaRepository<OrderGroup, Long> {
 
     List<OrderGroup> findByGroupNameAndSourceKey(String groupName, String sourceKey);
 
+    @Query("""
+            select og from OrderGroup og
+            where og.groupName = :groupName
+              and (
+                  og.sourceKey = :sourceKey
+                  or og.sourceKey is null
+                  or trim(og.sourceKey) = ''
+              )
+            """)
+    List<OrderGroup> findByGroupNameAndSourceKeyIncludingLegacy(
+            @Param("groupName") String groupName,
+            @Param("sourceKey") String sourceKey
+    );
+
     List<OrderGroup> findBySourceKey(String sourceKey);
 }

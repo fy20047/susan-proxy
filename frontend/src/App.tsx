@@ -29,7 +29,7 @@ import {
 import logo from "./image/logo1.png";
 import icon from "./image/icon.png";
 
-const SELLER_STORE_URL = "https://example.com";
+const SELLER_STORE_URL = "https://myship.7-11.com.tw/general/detail/GM2602284842246";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<"search" | "results">("search");
@@ -93,8 +93,15 @@ export default function App() {
   }, [standardOrders, standardFilter]);
 
   const quickOrderEligibleOrders = useMemo(
-    () => filteredPreorderOrders.filter((order) => order.summaryStatusCode === "READY_TO_SHIP"),
-    [filteredPreorderOrders]
+    () =>
+      preorderOrders.reduce<OrderView[]>((acc, order) => {
+        const items = order.items.filter((item) => item.statusCode === "PREORDER_ARRIVED");
+        if (items.length) {
+          acc.push(rebuildOrderView(order, items));
+        }
+        return acc;
+      }, []),
+    [preorderOrders]
   );
 
   const selectedQuickOrders = useMemo(() => {
@@ -423,7 +430,7 @@ export default function App() {
                       key={order.id}
                       order={order}
                       showStatus={showPreorderStatus}
-                      quickOrderSelectable={order.summaryStatusCode === "READY_TO_SHIP"}
+                      quickOrderSelectable={hasQuickOrderItems(order)}
                       quickOrderSelected={selectedQuickOrderIds.includes(order.id)}
                       onQuickOrderSelectChange={handleQuickOrderSelectChange}
                     />
@@ -493,4 +500,8 @@ function EmptyState({ label }: { label: string }) {
       <p className="font-bold text-[#2A5C5B]">目前「{label}」分類下沒有任何紀錄喔！</p>
     </div>
   );
+}
+
+function hasQuickOrderItems(order: OrderView): boolean {
+  return order.items.some((item) => item.statusCode === "PREORDER_ARRIVED");
 }

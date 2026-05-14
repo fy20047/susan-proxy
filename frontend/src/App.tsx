@@ -113,6 +113,7 @@ export default function App() {
     () => selectedQuickOrders.reduce((sum, order) => sum + order.balanceAmount, 0),
     [selectedQuickOrders]
   );
+  const showQuickOrderPanel = selectedQuickOrders.length > 0;
 
   useEffect(() => {
     const selectableIds = new Set(quickOrderEligibleOrders.map((order) => order.id));
@@ -384,7 +385,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {selectedQuickOrders.length > 0 && (
+                {showQuickOrderPanel && (
                   <div className="mb-6 bg-white border-4 border-[#2C1E16] p-4 md:p-5 shadow-[4px_4px_0px_#2C1E16]">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div className="space-y-1">

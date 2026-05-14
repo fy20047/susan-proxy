@@ -179,7 +179,10 @@ public class SheetSyncService {
             item.setJpyPrice(parseInteger(getValue(record, headerIndexMap, JPY_PRICE_HEADER), null));
 
             if (hasPreorderStatusColumn) {
-                item.setItemStatus(StatusResolver.determinePreorder(getValue(record, headerIndexMap, PREORDER_STATUS_HEADER)));
+                boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
+                item.setItemStatus(StatusResolver.determinePreorder(
+                        getValue(record, headerIndexMap, PREORDER_STATUS_HEADER),
+                        isShipped));
             } else {
                 boolean isReconciled = parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER));
                 boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, PURCHASED_HEADER));

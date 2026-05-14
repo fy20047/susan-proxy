@@ -31,6 +31,14 @@ public final class StatusResolver {
     }
 
     public static ItemStatus determinePreorder(String rawStatus) {
+        return determinePreorder(rawStatus, false);
+    }
+
+    public static ItemStatus determinePreorder(String rawStatus, boolean isShipped) {
+        if (isShipped) {
+            return ItemStatus.PREORDER_SHIPPED;
+        }
+
         if (rawStatus == null) {
             return ItemStatus.PREORDER_REGISTERED;
         }

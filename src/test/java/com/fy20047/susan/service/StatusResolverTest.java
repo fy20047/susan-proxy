@@ -27,4 +27,11 @@ class StatusResolverTest {
 
         assertEquals(ItemStatus.PREORDER_FORWARDING, status);
     }
+
+    @Test
+    void shouldUseShippedCheckboxForPreorderStatus() {
+        ItemStatus status = StatusResolver.determinePreorder("已抵台", true);
+
+        assertEquals(ItemStatus.PREORDER_SHIPPED, status);
+    }
 }

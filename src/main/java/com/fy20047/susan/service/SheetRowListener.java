@@ -316,7 +316,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
 
     private ItemStatus resolveItemStatus(SheetRowDto row) {
         if (currentSourceType == GroupSourceType.PREORDER && hasPreorderStatusColumn) {
-            return StatusResolver.determinePreorder(row.getPreorderStatus());
+            return StatusResolver.determinePreorder(row.getPreorderStatus(), parseBoolean(row.getShipped()));
         }
 
         boolean isReconciled = parseBoolean(row.getReconciled());

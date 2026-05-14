@@ -70,6 +70,7 @@ export type ApiOrderItem = {
   checkedIn?: boolean;
   balanceDueDate?: string;
   depositPaidDate?: string;
+  depositReconciled?: boolean;
   checkMark?: string;
   depositAmount?: number;
   balanceAmount?: number;
@@ -104,6 +105,7 @@ export type OrderItemView = {
   depositAmount: number;
   balanceAmount: number;
   checkMark?: string;
+  depositReconciled?: boolean;
   isDepositPaid: boolean;
   jpyPrice?: number;
   statusCode: ItemStatusCode;

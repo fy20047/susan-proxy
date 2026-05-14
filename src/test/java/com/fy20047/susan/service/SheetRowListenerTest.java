@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,8 +13,11 @@ import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.read.metadata.holder.ReadRowHolder;
 import com.alibaba.excel.read.metadata.holder.ReadSheetHolder;
 import com.fy20047.susan.domain.GroupSourceType;
+import com.fy20047.susan.domain.OrderItem;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 class SheetRowListenerTest {
@@ -22,6 +26,11 @@ class SheetRowListenerTest {
     void acceptsSheetWithoutJpyPriceHeader() {
         SheetSyncWriter writer = mock(SheetSyncWriter.class);
         when(writer.createGroup(any())).thenReturn(1L);
+        List<OrderItem> savedItems = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            savedItems.addAll(invocation.getArgument(0));
+            return null;
+        }).when(writer).saveItems(anyList());
 
         SheetRowListener listener = new SheetRowListener(
                 writer,
@@ -54,6 +63,48 @@ class SheetRowListenerTest {
         verify(writer).prepareReplace("0430測試團", "standard");
         verify(writer).createGroup(any());
         verify(writer).saveItems(anyList());
+        Assertions.assertEquals(false, savedItems.getFirst().getDepositReconciled());
+    }
+
+    @Test
+    void storesDepositReconciledFromReconciledCheckbox() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        when(writer.createGroup(any())).thenReturn(1L);
+        List<OrderItem> savedItems = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            savedItems.addAll(invocation.getArgument(0));
+            return null;
+        }).when(writer).saveItems(anyList());
+
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("0330測試團");
+
+        listener.invokeHeadMap(headerMapWithoutJpyPrice(), context);
+
+        SheetRowDto row = new SheetRowDto();
+        row.setBuyerNickname("002");
+        row.setItemName("金屬卡 - 單抽");
+        row.setDepositPaidDate("2026-04-01");
+        row.setReconciled("TRUE");
+        row.setDepositAmount(620);
+        row.setBalanceAmount(155);
+        row.setTotalAmount(775);
+        row.setQuantity(5);
+
+        listener.invoke(row, context);
+        listener.doAfterAllAnalysed(context);
+
+        verify(writer).saveItems(anyList());
+        Assertions.assertEquals(true, savedItems.getFirst().getDepositReconciled());
     }
 
     @Test

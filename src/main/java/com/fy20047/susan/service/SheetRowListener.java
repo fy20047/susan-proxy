@@ -227,6 +227,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
             String depositPaidDate = safeString(row.getDepositPaidDate());
             item.setDepositPaidDate(depositPaidDate);
+            item.setDepositReconciled(parseBoolean(row.getReconciled()));
             String checkMark = safeString(row.getCheckMark());
             if (checkMark.isEmpty() && !depositPaidDate.isEmpty()) {
                 checkMark = depositPaidDate;

@@ -61,6 +61,10 @@ public class OrderItem {
     @Column(name = "deposit_paid_date", length = 32)
     private String depositPaidDate;
 
+    // 對帳（勾選代表訂金已核對）
+    @Column(name = "deposit_reconciled")
+    private Boolean depositReconciled = false;
+
     @Column(name = "check_mark", length = 32)
     private String checkMark;
 

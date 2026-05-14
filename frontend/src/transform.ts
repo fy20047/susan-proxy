@@ -18,7 +18,9 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     const rawDepositPaidDate = item.depositPaidDate ?? "";
     const normalizedDepositPaidDate = rawDepositPaidDate.trim();
     const isDepositPaid =
-      normalizedCheckMark.length > 0 || normalizedDepositPaidDate.length > 0;
+      typeof item.depositReconciled === "boolean"
+        ? item.depositReconciled
+        : inferDepositPaidFromStatus(statusCode, normalizedCheckMark, normalizedDepositPaidDate);
 
     return {
       id: item.id,
@@ -31,6 +33,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
       depositAmount: item.depositAmount ?? 0,
       balanceAmount: item.balanceAmount ?? 0,
       checkMark: normalizedCheckMark || undefined,
+      depositReconciled: item.depositReconciled,
       isDepositPaid,
       jpyPrice: item.jpyPrice,
       statusCode,
@@ -99,4 +102,23 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
     summaryStatusCode,
     summaryStatus: toStandardOrderStatusLabel(summaryStatusCode)
   };
+}
+
+function inferDepositPaidFromStatus(
+  statusCode: OrderItemView["statusCode"],
+  checkMark: string,
+  depositPaidDate: string
+): boolean {
+  switch (statusCode) {
+    case "PENDING_PURCHASE":
+    case "IN_TRANSIT":
+    case "ARRIVED":
+    case "SHIPPED":
+      return true;
+    case "REGISTERED":
+    case "PENDING_DEPOSIT":
+      return false;
+    default:
+      return checkMark.length > 0 || depositPaidDate.length > 0;
+  }
 }

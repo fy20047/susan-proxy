@@ -166,6 +166,7 @@ public class SheetSyncService {
             item.setBalanceDueDate(getValue(record, headerIndexMap, BALANCE_DUE_DATE_HEADER));
             String depositPaidDate = getValue(record, headerIndexMap, DEPOSIT_PAID_DATE_HEADER);
             item.setDepositPaidDate(depositPaidDate);
+            item.setDepositReconciled(parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER)));
             String checkMark = getValue(record, headerIndexMap, CHECK_MARK_HEADER);
             if (isBlank(checkMark) && !isBlank(depositPaidDate)) {
                 checkMark = depositPaidDate;

@@ -113,7 +113,8 @@ export default function App() {
     () => selectedQuickOrders.reduce((sum, order) => sum + order.balanceAmount, 0),
     [selectedQuickOrders]
   );
-  const showQuickOrderPanel = selectedQuickOrders.length > 0;
+  const hasCheckedQuickOrder = selectedQuickOrderIds.length > 0;
+  const showQuickOrderPanel = hasCheckedQuickOrder && selectedQuickOrders.length > 0;
 
   useEffect(() => {
     const selectableIds = new Set(quickOrderEligibleOrders.map((order) => order.id));

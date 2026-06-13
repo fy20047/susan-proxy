@@ -111,8 +111,8 @@ export default function OrderCard({
                       <span>{item.name}</span>
                       <span className="ml-2 text-[#2A5C5B]">×{item.quantity}</span>
                       {item.isBalancePaid && (
-                        <span className="whitespace-nowrap border border-[#2C1E16] bg-[#EBE3CC] px-2 py-0.5 text-xs font-black text-[#BC4A3C] md:text-sm">
-                          尾款已付
+                        <span className="whitespace-nowrap text-xs font-black text-[#BC4A3C] md:text-sm">
+                          （尾款已付）
                         </span>
                       )}
                     </div>

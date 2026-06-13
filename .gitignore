@@ -34,3 +34,4 @@ build/
 
 frontend/src/example.tsx
 frontend/src/example_backup.tsx
+src/main/resources/sample-data/*.xlsx

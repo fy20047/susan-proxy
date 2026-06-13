@@ -40,8 +40,11 @@ public class SheetRowDto {
     @ExcelProperty("喊單序")
     private String orderRank;
 
-    @ExcelProperty("已排到")
+    @ExcelProperty("是否排到")
     private String queued;
+
+    @ExcelProperty("已排到")
+    private String legacyQueued;
 
     @ExcelProperty("品項")
     private String itemName;

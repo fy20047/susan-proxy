@@ -27,6 +27,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
     private static final String QUEUED_HEADER = resolveExcelHeader("queued");
+    private static final String LEGACY_QUEUED_HEADER = resolveExcelHeader("legacyQueued");
     private static final String PREORDER_STATUS_HEADER = resolveExcelHeader("preorderStatus");
 
     private final SheetSyncWriter sheetSyncWriter;
@@ -55,6 +56,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean hasData = false;
     private String lastBuyerNickname = "";
     private boolean hasQueuedColumn = false;
+    private boolean hasLegacyQueuedColumn = false;
     private boolean hasPreorderStatusColumn = false;
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
@@ -120,6 +122,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         hasData = false;
         lastBuyerNickname = "";
         hasQueuedColumn = false;
+        hasLegacyQueuedColumn = false;
         hasPreorderStatusColumn = false;
         validSheet = false;
         skipCurrentSheet = shouldSkipSheet(currentSheetName);
@@ -147,6 +150,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         }
 
         hasQueuedColumn = containsHeader(headers, QUEUED_HEADER);
+        hasLegacyQueuedColumn = containsHeader(headers, LEGACY_QUEUED_HEADER);
         hasPreorderStatusColumn = containsHeader(headers, PREORDER_STATUS_HEADER);
         currentSourceType = resolveCurrentSourceType(resolveSheetConfig(currentSheetName), hasPreorderStatusColumn);
         validSheet = true;
@@ -222,7 +226,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
                 orderSn = safeString(row.getOrderSn());
             }
             item.setOrderSn(orderSn);
-            item.setQueued(hasQueuedColumn ? parseBoolean(row.getQueued()) : null);
+            item.setQueued(resolveQueued(row));
             item.setCheckedIn(parseBoolean(row.getCheckedIn()));
             item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
             String depositPaidDate = safeString(row.getDepositPaidDate());
@@ -325,6 +329,16 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         boolean isArrived = parseBoolean(row.getArrived());
         boolean isShipped = parseBoolean(row.getShipped());
         return StatusResolver.determineLegacy(isReconciled, isPurchased, isArrived, isShipped);
+    }
+
+    private Boolean resolveQueued(SheetRowDto row) {
+        if (hasQueuedColumn) {
+            return parseBoolean(row.getQueued());
+        }
+        if (hasLegacyQueuedColumn) {
+            return parseBoolean(row.getLegacyQueued());
+        }
+        return null;
     }
 
     private boolean shouldSkipSheet(String sheetName) {

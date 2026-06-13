@@ -17,6 +17,7 @@ import com.fy20047.susan.domain.OrderItem;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -108,6 +109,34 @@ class SheetRowListenerTest {
     }
 
     @Test
+    void storesQueuedTrueFromCurrentQueuedHeader() {
+        List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> row.setQueued("TRUE"));
+
+        Assertions.assertEquals(true, savedItems.getFirst().getQueued());
+    }
+
+    @Test
+    void storesQueuedFalseFromCurrentQueuedHeader() {
+        List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> row.setQueued("FALSE"));
+
+        Assertions.assertEquals(false, savedItems.getFirst().getQueued());
+    }
+
+    @Test
+    void fallsBackToLegacyQueuedHeader() {
+        List<OrderItem> savedItems = readSingleRow(legacyQueuedHeaderMap(), row -> row.setLegacyQueued("TRUE"));
+
+        Assertions.assertEquals(true, savedItems.getFirst().getQueued());
+    }
+
+    @Test
+    void storesNullQueuedWhenQueuedHeaderIsMissing() {
+        List<OrderItem> savedItems = readSingleRow(headerMapWithoutJpyPrice(), row -> row.setQueued("TRUE"));
+
+        Assertions.assertNull(savedItems.getFirst().getQueued());
+    }
+
+    @Test
     void skipsSheetWhenRequiredHeaderIsMissing() {
         SheetSyncWriter writer = mock(SheetSyncWriter.class);
         SheetRowListener listener = new SheetRowListener(writer, null, true, 100, 10, 64, 16);
@@ -177,6 +206,81 @@ class SheetRowListenerTest {
         when(context.readRowHolder()).thenReturn(readRowHolder);
         when(readRowHolder.getRowIndex()).thenReturn(1);
         return context;
+    }
+
+    private static List<OrderItem> readSingleRow(Map<Integer, String> headers, Consumer<SheetRowDto> rowCustomizer) {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        when(writer.createGroup(any())).thenReturn(1L);
+        List<OrderItem> savedItems = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            savedItems.addAll(invocation.getArgument(0));
+            return null;
+        }).when(writer).saveItems(anyList());
+
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("場販測試團");
+
+        listener.invokeHeadMap(headers, context);
+
+        SheetRowDto row = new SheetRowDto();
+        row.setBuyerNickname("Buyer");
+        row.setItemName("測試商品");
+        row.setDepositAmount(100);
+        row.setBalanceAmount(25);
+        row.setTotalAmount(125);
+        row.setQuantity(1);
+        rowCustomizer.accept(row);
+
+        listener.invoke(row, context);
+        listener.doAfterAllAnalysed(context);
+
+        verify(writer).saveItems(anyList());
+        Assertions.assertFalse(savedItems.isEmpty());
+        return savedItems;
+    }
+
+    private static Map<Integer, String> fieldSalesHeaderMap() {
+        Map<Integer, String> headers = new LinkedHashMap<>();
+        headers.put(0, "尾款日");
+        headers.put(1, "付定日");
+        headers.put(2, "對");
+        headers.put(3, "對帳");
+        headers.put(4, "定金80%");
+        headers.put(5, "尾款20%");
+        headers.put(6, "購買總額");
+        headers.put(7, "團友");
+        headers.put(8, "喊單序");
+        headers.put(9, "順位");
+        headers.put(10, "是否排到");
+        headers.put(11, "已採購");
+        headers.put(12, "品項");
+        headers.put(13, "數量");
+        headers.put(14, "特典");
+        headers.put(15, "台幣單價");
+        headers.put(16, "日幣原價");
+        headers.put(17, "日幣總額");
+        headers.put(18, "IP");
+        headers.put(19, "未報到");
+        headers.put(20, "抵台");
+        headers.put(21, "出貨狀態");
+        headers.put(22, "喊單日");
+        headers.put(23, "備註");
+        return headers;
+    }
+
+    private static Map<Integer, String> legacyQueuedHeaderMap() {
+        Map<Integer, String> headers = headerMapWithoutJpyPrice();
+        headers.put(21, "已排到");
+        return headers;
     }
 
     private static Map<Integer, String> headerMapWithoutJpyPrice() {

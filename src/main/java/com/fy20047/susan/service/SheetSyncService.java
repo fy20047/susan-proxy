@@ -52,6 +52,7 @@ public class SheetSyncService {
     private static final String ORDER_RANK_HEADER = resolveExcelHeader("orderRank");
     private static final String ORDER_SN_HEADER = resolveExcelHeader("orderSn");
     private static final String QUEUED_HEADER = resolveExcelHeader("queued");
+    private static final String LEGACY_QUEUED_HEADER = resolveExcelHeader("legacyQueued");
     private static final String CHECKED_IN_HEADER = resolveExcelHeader("checkedIn");
     private static final String BALANCE_DUE_DATE_HEADER = resolveExcelHeader("balanceDueDate");
     private static final String DEPOSIT_PAID_DATE_HEADER = resolveExcelHeader("depositPaidDate");
@@ -124,6 +125,7 @@ public class SheetSyncService {
 
         Map<String, Integer> headerIndexMap = buildHeaderIndex(records.get(headerIndex));
         boolean hasQueuedColumn = containsHeader(headerIndexMap, QUEUED_HEADER);
+        boolean hasLegacyQueuedColumn = containsHeader(headerIndexMap, LEGACY_QUEUED_HEADER);
         boolean hasPreorderStatusColumn = containsHeader(headerIndexMap, PREORDER_STATUS_HEADER);
         Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
 
@@ -161,7 +163,7 @@ public class SheetSyncService {
                 orderSn = getValue(record, headerIndexMap, ORDER_SN_HEADER);
             }
             item.setOrderSn(orderSn);
-            item.setQueued(hasQueuedColumn ? parseBoolean(getValue(record, headerIndexMap, QUEUED_HEADER)) : null);
+            item.setQueued(resolveQueued(record, headerIndexMap, hasQueuedColumn, hasLegacyQueuedColumn));
             item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, CHECKED_IN_HEADER)));
             item.setBalanceDueDate(getValue(record, headerIndexMap, BALANCE_DUE_DATE_HEADER));
             String depositPaidDate = getValue(record, headerIndexMap, DEPOSIT_PAID_DATE_HEADER);
@@ -365,6 +367,21 @@ public class SheetSyncService {
             return false;
         }
         return headerIndexMap.containsKey(headerName);
+    }
+
+    private Boolean resolveQueued(
+            CSVRecord record,
+            Map<String, Integer> headerIndexMap,
+            boolean hasQueuedColumn,
+            boolean hasLegacyQueuedColumn
+    ) {
+        if (hasQueuedColumn) {
+            return parseBoolean(getValue(record, headerIndexMap, QUEUED_HEADER));
+        }
+        if (hasLegacyQueuedColumn) {
+            return parseBoolean(getValue(record, headerIndexMap, LEGACY_QUEUED_HEADER));
+        }
+        return null;
     }
 
     private String normalizeHeaderName(String raw) {

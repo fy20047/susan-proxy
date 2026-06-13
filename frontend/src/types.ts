@@ -104,9 +104,11 @@ export type OrderItemView = {
   totalAmount: number;
   depositAmount: number;
   balanceAmount: number;
+  balanceDueDate?: string;
   checkMark?: string;
   depositReconciled?: boolean;
   isDepositPaid: boolean;
+  isBalancePaid: boolean;
   jpyPrice?: number;
   statusCode: ItemStatusCode;
   status: ItemStatusLabel;
@@ -129,5 +131,6 @@ export type OrderView = {
   paidDepositAmount: number;
   pendingDepositAmount: number;
   balanceAmount: number;
+  isBalancePaid: boolean;
   lastUpdated?: string;
 };

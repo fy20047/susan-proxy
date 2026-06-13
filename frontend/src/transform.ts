@@ -17,24 +17,26 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     const normalizedCheckMark = rawCheckMark.trim();
     const rawDepositPaidDate = item.depositPaidDate ?? "";
     const normalizedDepositPaidDate = rawDepositPaidDate.trim();
-    const isDepositPaid =
-      typeof item.depositReconciled === "boolean"
-        ? item.depositReconciled
-        : inferDepositPaidFromStatus(statusCode, normalizedCheckMark, normalizedDepositPaidDate);
+    const rawBalanceDueDate = item.balanceDueDate ?? "";
+    const normalizedBalanceDueDate = rawBalanceDueDate.trim();
+    const isCheckedIn = item.checkedIn ?? false;
+    const isDepositPaid = normalizedDepositPaidDate.length > 0;
 
     return {
       id: item.id,
       name: item.itemName,
       orderSn: item.orderSn,
       queued: item.queued,
-      checkedIn: item.checkedIn ?? false,
+      checkedIn: isCheckedIn,
       quantity: item.quantity ?? 1,
       totalAmount: item.totalAmount ?? 0,
       depositAmount: item.depositAmount ?? 0,
       balanceAmount: item.balanceAmount ?? 0,
+      balanceDueDate: normalizedBalanceDueDate || undefined,
       checkMark: normalizedCheckMark || undefined,
       depositReconciled: item.depositReconciled,
       isDepositPaid,
+      isBalancePaid: normalizedBalanceDueDate.length > 0,
       jpyPrice: item.jpyPrice,
       statusCode,
       status: toItemStatusLabel(statusCode),
@@ -58,6 +60,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     paidDepositAmount: 0,
     pendingDepositAmount: 0,
     balanceAmount: 0,
+    isBalancePaid: false,
     lastUpdated: group.lastUpdated
   });
 }
@@ -74,6 +77,8 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
     0
   );
   const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
+  const isBalancePaid =
+    order.items.length > 0 && order.items.every((item) => item.isBalancePaid);
 
   if (order.sourceType === "PREORDER") {
     const summaryStatusCode = derivePreorderShippingStatusCode(items);
@@ -85,6 +90,7 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
       paidDepositAmount,
       pendingDepositAmount,
       balanceAmount,
+      isBalancePaid,
       summaryStatusCode,
       summaryStatus: toShippingStatusLabel(summaryStatusCode)
     };
@@ -99,26 +105,8 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
     paidDepositAmount,
     pendingDepositAmount,
     balanceAmount,
+    isBalancePaid,
     summaryStatusCode,
     summaryStatus: toStandardOrderStatusLabel(summaryStatusCode)
   };
-}
-
-function inferDepositPaidFromStatus(
-  statusCode: OrderItemView["statusCode"],
-  checkMark: string,
-  depositPaidDate: string
-): boolean {
-  switch (statusCode) {
-    case "PENDING_PURCHASE":
-    case "IN_TRANSIT":
-    case "ARRIVED":
-    case "SHIPPED":
-      return true;
-    case "REGISTERED":
-    case "PENDING_DEPOSIT":
-      return false;
-    default:
-      return checkMark.length > 0 || depositPaidDate.length > 0;
-  }
 }

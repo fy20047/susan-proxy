@@ -94,14 +94,14 @@ export default function App() {
 
   const quickOrderEligibleOrders = useMemo(
     () =>
-      preorderOrders.reduce<OrderView[]>((acc, order) => {
-        const items = order.items.filter((item) => item.statusCode === "PREORDER_ARRIVED");
+      orders.reduce<OrderView[]>((acc, order) => {
+        const items = order.items.filter(isQuickOrderItem);
         if (items.length) {
           acc.push(rebuildOrderView(order, items));
         }
         return acc;
       }, []),
-    [preorderOrders]
+    [orders]
   );
 
   const selectedQuickOrders = useMemo(() => {
@@ -158,7 +158,7 @@ export default function App() {
     setIsLoading(true);
     try {
       const data = await fetchOrders(normalized);
-      const views = data.map(buildOrderView);
+      const views = sortOrdersByGroupDateDesc(data.map(buildOrderView));
       setOrders(views);
       setCurrentSearchName(normalized);
       setCurrentPage("results");
@@ -335,6 +335,47 @@ export default function App() {
               </div>
             )}
 
+                {showQuickOrderPanel && (
+                  <div className="mb-6 bg-white border-4 border-[#2C1E16] p-4 md:p-5 shadow-[4px_4px_0px_#2C1E16]">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-lg font-black text-[#2C1E16]">快速下單</p>
+                        <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
+                          已選 {selectedQuickOrders.length} 筆，可出貨尾款合計 NT$ {selectedQuickOrderBalance.toLocaleString()}
+                        </p>
+                        <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
+                          勾選要一起出貨的團名後，可直接複製明細並前往賣貨便賣場。
+                        </p>
+                        {quickOrderMessage && (
+                          <p className="text-sm font-bold text-[#BC4A3C]">{quickOrderMessage}</p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                        <button
+                          type="button"
+                          onClick={handleCopyQuickOrderDetails}
+                          disabled={!selectedQuickOrders.length}
+                          className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                        >
+                          <Copy size={18} />
+                          <span>複製明細</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickOrderSubmit}
+                          disabled={!selectedQuickOrders.length}
+                          className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                        >
+                          <ExternalLink size={18} />
+                          <span>下單</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+
             {preorderOrders.length > 0 && (
               <section className="mb-12">
                 <div className="mb-4 flex items-center justify-between gap-4 border-l-4 border-[#BC4A3C] pl-4">
@@ -386,46 +427,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {showQuickOrderPanel && (
-                  <div className="mb-6 bg-white border-4 border-[#2C1E16] p-4 md:p-5 shadow-[4px_4px_0px_#2C1E16]">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div className="space-y-1">
-                        <p className="text-lg font-black text-[#2C1E16]">快速下單</p>
-                        <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
-                          已選 {selectedQuickOrders.length} 筆，可出貨尾款合計 NT$ {selectedQuickOrderBalance.toLocaleString()}
-                        </p>
-                        <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
-                          勾選要一起出貨的團名後，可直接複製明細並前往賣貨便賣場。
-                        </p>
-                        {quickOrderMessage && (
-                          <p className="text-sm font-bold text-[#BC4A3C]">{quickOrderMessage}</p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                        <button
-                          type="button"
-                          onClick={handleCopyQuickOrderDetails}
-                          disabled={!selectedQuickOrders.length}
-                          className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                        >
-                          <Copy size={18} />
-                          <span>複製明細</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleQuickOrderSubmit}
-                          disabled={!selectedQuickOrders.length}
-                          className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                        >
-                          <ExternalLink size={18} />
-                          <span>下單</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {filteredPreorderOrders.length > 0 ? (
                   filteredPreorderOrders.map((order) => (
                     <OrderCard
@@ -472,7 +473,14 @@ export default function App() {
 
                 {filteredStandardOrders.length > 0 ? (
                   filteredStandardOrders.map((order) => (
-                    <OrderCard key={order.id} order={order} showStatus={showStandardStatus} />
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      showStatus={showStandardStatus}
+                      quickOrderSelectable={hasQuickOrderItems(order)}
+                      quickOrderSelected={selectedQuickOrderIds.includes(order.id)}
+                      onQuickOrderSelectChange={handleQuickOrderSelectChange}
+                    />
                   ))
                 ) : (
                   <EmptyState label={standardEmptyLabel} />
@@ -505,5 +513,56 @@ function EmptyState({ label }: { label: string }) {
 }
 
 function hasQuickOrderItems(order: OrderView): boolean {
-  return order.items.some((item) => item.statusCode === "PREORDER_ARRIVED");
+  return order.items.some(isQuickOrderItem);
+}
+
+function isQuickOrderItem(item: OrderView["items"][number]): boolean {
+  return item.statusCode === "PREORDER_ARRIVED" || item.statusCode === "ARRIVED";
+}
+
+function sortOrdersByGroupDateDesc(orders: OrderView[]): OrderView[] {
+  return orders
+    .map((order, index) => ({
+      order,
+      index,
+      dateKey: getGroupDateSortKey(order.groupName)
+    }))
+    .sort((a, b) => b.dateKey - a.dateKey || a.index - b.index)
+    .map(({ order }) => order);
+}
+
+function getGroupDateSortKey(groupName: string): number {
+  const normalized = groupName.trim();
+  const candidates: Array<{ index: number; dateKey: number }> = [];
+
+  for (const match of normalized.matchAll(/(\d{1,2})[./-](\d{1,2})/g)) {
+    const dateKey = toMonthDaySortKey(Number(match[1]), Number(match[2]));
+    if (dateKey > 0) {
+      candidates.push({ index: match.index ?? 0, dateKey });
+    }
+  }
+
+  for (const match of normalized.matchAll(/\d{3,4}/g)) {
+    const raw = match[0];
+    const month = Number(raw.slice(0, raw.length - 2));
+    const day = Number(raw.slice(-2));
+    const dateKey = toMonthDaySortKey(month, day);
+    if (dateKey > 0) {
+      candidates.push({ index: match.index ?? 0, dateKey });
+    }
+  }
+
+  if (!candidates.length) {
+    return -1;
+  }
+
+  candidates.sort((a, b) => a.index - b.index);
+  return candidates[0].dateKey;
+}
+
+function toMonthDaySortKey(month: number, day: number): number {
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return -1;
+  }
+  return month * 100 + day;
 }

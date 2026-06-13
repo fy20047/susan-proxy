@@ -25,6 +25,7 @@ export default function OrderCard({
   const paidDeposit = order.paidDepositAmount;
   const pendingDeposit = order.pendingDepositAmount;
   const balance = order.balanceAmount;
+  const isBalancePaid = order.isBalancePaid;
 
   const handleQuickOrderClick = (event: MouseEvent<HTMLLabelElement>) => {
     event.stopPropagation();
@@ -106,9 +107,14 @@ export default function OrderCard({
                   </div>
 
                   <div className="flex justify-between items-start md:block flex-1">
-                    <div className="font-bold text-[#2C1E16] text-base md:text-base">
-                      {item.name}
+                    <div className="font-bold text-[#2C1E16] text-base md:text-base flex flex-wrap items-center gap-2">
+                      <span>{item.name}</span>
                       <span className="ml-2 text-[#2A5C5B]">×{item.quantity}</span>
+                      {item.isBalancePaid && (
+                        <span className="whitespace-nowrap border border-[#2C1E16] bg-[#EBE3CC] px-2 py-0.5 text-xs font-black text-[#BC4A3C] md:text-sm">
+                          尾款已付
+                        </span>
+                      )}
                     </div>
 
                     <div className="font-black text-[#2A5C5B] text-base md:hidden ml-2 whitespace-nowrap">
@@ -163,8 +169,12 @@ export default function OrderCard({
                   <div className="border-t-2 border-dashed border-[#2C1E16] my-2"></div>
 
                   <div className="flex justify-between items-center gap-4 bg-[#BC4A3C] text-[#EBE3CC] p-2 mt-1 border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] transform -rotate-1 hover:rotate-0 transition-transform">
-                    <span className="font-black text-base md:text-lg tracking-wider">取付尾款</span>
-                    <span className="font-black text-lg md:text-xl">NT$ {balance.toLocaleString()}</span>
+                    <span className="font-black text-base md:text-lg tracking-wider">
+                      {isBalancePaid ? "已結清尾款" : "取付尾款"}
+                    </span>
+                    <span className="flex flex-wrap items-center justify-end gap-2 font-black text-lg md:text-xl">
+                      <span>NT$ {balance.toLocaleString()}</span>
+                    </span>
                   </div>
                 </div>
               </div>

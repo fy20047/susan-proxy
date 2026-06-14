@@ -1,73 +1,99 @@
 ﻿# Susan Proxy System (俗三代購訂單管理系統)
 
-這是一個專為代購賣家打造的訂單同步與查詢系統。
-賣家可以維持原有的習慣，使用熟悉的 Google Sheet 或 Excel 管理訂單，系統會定時將資料同步至資料庫。買家則無需登入，僅需輸入「暱稱」即可即時查詢個人在各個連線群組的訂單明細、到貨進度與欠款狀態。
-為求快速上線與穩定同步，目前專案採 MVP (Minimum Viable Product) 策略：省略較為複雜的後台管理介面，所有配置先透過環境變數與 Google Sheet 內的「設定」分頁達成。
+這是給代購賣家使用的訂單同步與買家查詢系統。賣家可以繼續用 Google Sheet 或 Excel 管理訂單，系統會把可同步的資料整理進資料庫；買家不用登入，只要輸入暱稱，就能查詢自己在各團的訂單、到貨進度與付款狀態。
 
-## 後續規劃 (Future Roadmap)
+目前專案包含買家查詢頁與 `/admin` 後台。後台提供管理者登入、Google Sheet 同步來源管理、手動同步、單一來源同步與自動同步開關。
 
-- **雲端同步升級：** 有計畫導入 Google Sheets API，將目前的「本機 CSV 手動同步」升級為「雲端表單自動同步」，進一步自動化代購賣家的工作流程。
-- **身分驗證與權限：** 為同步 API (`/api/dev/sync-csv`) 加入 API Key 或 Spring Security JWT 防護，確保後台資料的安全。
+## 技術棧
 
-## 技術棧 (Tech Stack)
-
-| **類別** | **技術工具** |
+| 類別 | 技術 |
 | --- | --- |
 | Backend | Java 21, Spring Boot 3, Spring Data JPA, Hibernate, Lombok |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, Lucide React |
 | Database | MariaDB |
-|ETL / Parser |	EasyExcel (XLSX 解析), Apache Commons CSV |
-| DevOps | Docker, Docker Compose, Zeabur (雲端部署) |
+| ETL / Parser | EasyExcel, Apache Commons CSV |
+| DevOps | Docker, Docker Compose |
 
-## 核心設計與資料流程
+## 核心資料流
 
-目前系統的核心主為「資料的一致性」與「簡易查詢」：
-1. 自動化 ETL 流程：目前設定後端 `SheetSyncService` 每 5 分鐘自動抓取 Google Sheet 的 XLSX 匯出連結。
-2. 先採用「Wipe and Replace (全刪全增)」設計，同步時以分頁名稱作為 `groupName`，自動清理舊資料並重建，來避免出現幽靈資料或狀態不同步的問題。
-3. 效能優化 (JPA)：
-* 利用 `JOIN FETCH` 解決 N+1 查詢問題，一次抓取 `OrderGroup` 與 `OrderItem`。
-* 配合 `DISTINCT` 關鍵字過濾重複的 JOIN 結果，確保回傳最乾淨的 JSON。
-4. 資料隔離 (DTO Pattern)：使用 `OrderGroupDto` 來隔離資料庫實體，防止 JSON 雙向關聯造成的 `StackOverflowError`。
+1. 後台或部署設定提供 Google Sheet 同步來源。同步來源會保存於資料庫，環境變數主要用於初始化預設來源與部署設定。
+2. `SheetSyncService` 讀取 Google Sheet XLSX 匯出內容或本機 CSV，依來源設定與表格欄位解析為一般團 `STANDARD` 或受注團 `PREORDER`。
+3. 同步採用 replace-by-source-and-group 的策略：以來源與分頁名稱更新該團資料，避免舊資料殘留。
+4. `OrderQueryController` 依買家暱稱查詢訂單，透過 DTO 回傳前端需要的資料，避免直接暴露 JPA entity。
+5. 前端在 `transform.ts` 與 `status.ts` 組合訂單摘要、狀態標籤、篩選與快速下單顯示邏輯。
 
-## 📊 Google Sheet 配置規則
+詳細欄位、狀態與端點以程式碼為準，不在 README 複製完整清單。常用 source of truth：
 
-為了讓系統正確讀取資料，目前使用時須遵循以下規則：
-### 1. 表頭
-* 表頭必須位於 **第一列**。
-* 欄位名稱需與系統預設一致，但順序可以隨意調整。
+- API：`src/main/java/com/fy20047/susan/controller` 與 `frontend/src/api`
+- Sheet 欄位與同步：`SheetRowDto`、`SheetRowListener`、`SheetSyncService`
+- 狀態：`ItemStatus`、`ShippingStatus`、`frontend/src/status.ts`
+- 前端資料形狀：`frontend/src/types.ts`、`frontend/src/transform.ts`
 
-### 2. 顯示分頁名稱
+## 主要功能入口
 
-系統目前只會同步在「設定」分頁中標註為顯示的分頁表。所以需要先自行新增一個名為 `設定` 的分頁，內容範例如下： 
+- 買家查詢：`/api/orders`
+- 管理登入：`/api/admin/sessions`
+- Sheet 同步管理：`/api/admin/sheet-sync`
+- 頁面瀏覽統計：`/api/pv`
+- 開發用同步：`/api/dev/*`
 
-| 分頁名稱 | 顯示 |
-| --- | --- |
-| 0405【我英原畫展-福岡】 | TRUE |
-| 0210【多聞FACE OFF】 | TRUE |
-| 0523 測試用 | FALSE |
+管理登入使用後端記憶體中的 bearer session，session 有效期限目前由 `AdminAuthService` 控制。正式部署時應以環境變數設定管理者帳密，不要依賴程式碼中的預設值。
 
-* **顯示** 欄位支援：`TRUE`, `T`, `1`, `Y`, `YES`, `V`。
-* **名稱處理**：若分頁名稱含 `/` 會自動移除（例如 `F/ACE` 轉為 `FACE`）。
+## Google Sheet 使用方式
 
-### 3. 合併欄位邏輯
+Sheet 的欄位名稱與解析規則會隨營運表單調整，請以 `SheetRowDto` 與相關測試為準。穩定規則如下：
 
-* 若同買家有多筆訂單的合併儲存格，系統會自動抓同一買家在該團中的最大值作為顯示結果。
+- 每個訂單分頁需要有系統可辨識的表頭。
+- 可以使用名為 `設定` 的分頁控制哪些分頁要顯示或同步。
+- 分頁名稱會經過正規化後成為團名顯示與同步比對依據。
+- 受注團與一般團會走不同狀態推導規則。
 
-## 專案中的 API
+## 本機開發
 
-* 買家查詢：`GET /api/orders?nickname={買家暱稱}`
-* 手動同步：`POST /api/dev/sync-sheet` (開發與除錯用，讓資料能夠立即同步)
-* JSON 回應格式：
-```json
-{
-  "success": true,
-  "data": { ... },
-  "error": null,
-  "timestamp": "2026-02-27T04:37:13"
-}
+啟動 MariaDB：
+
+```powershell
+docker compose up -d susan-mariadb
 ```
 
-## 後續規劃 (Future Roadmap)
+啟動後端：
 
-* 後台管理介面：手動選擇同步的分頁、查看同步歷史與錯誤提示。
-* 後台安全問題：加入 API Key 或 JWT 驗證。
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+啟動前端：
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+前端 API base URL 使用 `VITE_API_URL` 設定；未設定時會呼叫同源路徑。後端資料庫、port、管理者帳密與 Sheet 來源使用環境變數覆蓋，變數名稱請參考 `src/main/resources/application.yml`，不要在文件或 commit 訊息中重述敏感預設值。
+
+## 驗證
+
+後端測試：
+
+```powershell
+mvn -q test
+```
+
+或使用 Maven wrapper。若 Windows PowerShell wrapper 入口出錯，可改用已安裝 Maven 或 wrapper cache 中的 `mvn.cmd`。
+
+前端指令以 `frontend/package.json` 為準：
+
+```powershell
+cd frontend
+npm run lint
+npm run build
+```
+
+目前前端 lint 可能受既有 ESLint 設定影響而失敗；修正前請先確認錯誤是否與本次變更相關。`npm run build` 可能更新 TypeScript build info，執行前後請檢查 git diff。
+
+## 維護原則
+
+- README 保留穩定產品與架構資訊；容易變動的 API、欄位、狀態細節回到程式碼查。
+- 給 coding agent 的專案規則寫在 `AGENTS.md`。
+- 若 README 與程式碼衝突，先相信程式碼，再更新 README。

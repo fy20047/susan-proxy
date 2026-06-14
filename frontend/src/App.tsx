@@ -2,11 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
   Copy,
   ExternalLink,
+  LockKeyhole,
+  LogIn,
+  LogOut,
   Package,
+  RefreshCw,
   Search
 } from "lucide-react";
+import {
+  AdminApiError,
+  AdminSession,
+  createAdminSession,
+  deleteAdminSession,
+  syncGoogleSheet
+} from "./api/admin";
 import { fetchOrders } from "./api/orders";
 import { recordPageView } from "./api/pageViews";
 import OrderCard from "./components/OrderCard";
@@ -30,12 +43,68 @@ import logo from "./image/logo1.png";
 import icon from "./image/icon.png";
 
 const SELLER_STORE_URL = "https://myship.7-11.com.tw/general/detail/GM2602284842246";
+const ADMIN_SESSION_STORAGE_KEY = "susan-admin-session";
+
+type AppPage = "search" | "results" | "admin-login" | "admin-dashboard";
+
+function isAdminPath(): boolean {
+  return window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
+}
+
+function loadStoredAdminSession(): AdminSession | null {
+  const raw = window.localStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const session = JSON.parse(raw) as AdminSession;
+    const expiresAt = new Date(session.expiresAt);
+    if (!session.token || Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date()) {
+      window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
+function storeAdminSession(session: AdminSession) {
+  window.localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+function clearStoredAdminSession() {
+  window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("zh-TW", { hour12: false });
+}
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"search" | "results">("search");
+  const [adminSession, setAdminSession] = useState<AdminSession | null>(() => loadStoredAdminSession());
+  const [currentPage, setCurrentPage] = useState<AppPage>(() => {
+    if (!isAdminPath()) {
+      return "search";
+    }
+    return loadStoredAdminSession() ? "admin-dashboard" : "admin-login";
+  });
   const [searchName, setSearchName] = useState("");
   const [currentSearchName, setCurrentSearchName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
+  const [adminLoginError, setAdminLoginError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [standardFilter, setStandardFilter] = useState<StandardItemStatusCode | "ALL">("ALL");
   const [standardShippingFilter, setStandardShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
@@ -156,6 +225,90 @@ export default function App() {
         ? "全部"
         : toStandardOrderStatusLabel(standardFilter);
 
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const normalizedUsername = adminUsername.trim();
+    const normalizedPassword = adminPassword.trim();
+    if (!normalizedUsername || !normalizedPassword) {
+      setAdminLoginError("請輸入帳號與密碼。");
+      return;
+    }
+
+    setAdminLoginError(null);
+    setIsAdminLoggingIn(true);
+    try {
+      const session = await createAdminSession(normalizedUsername, normalizedPassword);
+      storeAdminSession(session);
+      setAdminSession(session);
+      setAdminPassword("");
+      setSyncMessage(null);
+      setSyncError(null);
+      setCurrentPage("admin-dashboard");
+      window.history.replaceState(null, "", "/admin");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "登入失敗，請稍後再試。";
+      setAdminLoginError(message);
+    } finally {
+      setIsAdminLoggingIn(false);
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    const token = adminSession?.token;
+    if (token) {
+      try {
+        await deleteAdminSession(token);
+      } catch {
+        // Local session cleanup still needs to happen even if the API call fails.
+      }
+    }
+
+    clearStoredAdminSession();
+    setAdminSession(null);
+    setAdminPassword("");
+    setAdminLoginError(null);
+    setSyncMessage(null);
+    setSyncError(null);
+    setCurrentPage("admin-login");
+    window.history.replaceState(null, "", "/admin");
+  };
+
+  const handleAdminSync = async () => {
+    if (!adminSession) {
+      clearStoredAdminSession();
+      setCurrentPage("admin-login");
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncMessage(null);
+    setSyncError(null);
+    try {
+      const result = await syncGoogleSheet(adminSession.token);
+      setSyncMessage(`同步完成：${formatDateTime(result.syncedAt)}`);
+    } catch (err) {
+      if (err instanceof AdminApiError && err.status === 401) {
+        clearStoredAdminSession();
+        setAdminSession(null);
+        setCurrentPage("admin-login");
+        setAdminLoginError("登入已逾時，請重新登入。");
+        return;
+      }
+
+      const message =
+        err instanceof Error ? err.message : "同步失敗，請稍後再試。";
+      setSyncError(message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleBackToSearch = () => {
+    setCurrentPage("search");
+    window.history.replaceState(null, "", "/");
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalized = searchName.trim();
@@ -228,6 +381,32 @@ export default function App() {
         backgroundSize: "20px 20px"
       }}
     >
+      {currentPage === "admin-login" && (
+        <AdminLoginScreen
+          username={adminUsername}
+          password={adminPassword}
+          error={adminLoginError}
+          isLoading={isAdminLoggingIn}
+          onUsernameChange={setAdminUsername}
+          onPasswordChange={setAdminPassword}
+          onSubmit={handleAdminLogin}
+          onBackToSearch={handleBackToSearch}
+        />
+      )}
+
+      {currentPage === "admin-dashboard" && (
+        <AdminDashboardScreen
+          username={adminUsername || "管理員"}
+          expiresAt={adminSession?.expiresAt}
+          isSyncing={isSyncing}
+          syncMessage={syncMessage}
+          syncError={syncError}
+          onSync={handleAdminSync}
+          onLogout={handleAdminLogout}
+          onBackToSearch={handleBackToSearch}
+        />
+      )}
+
       {currentPage === "search" && (
         <div className="flex-1 flex flex-col">
           <div className="flex-1 flex items-center justify-center p-6">
@@ -417,24 +596,12 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mb-8 max-w-xs">
-                  <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
-                    出貨進度
-                  </label>
-                  <select
-                    value={preorderShippingFilter}
-                    onChange={(event) =>
-                      setPreorderShippingFilter(event.target.value as ShippingStatusCode | "ALL")
-                    }
-                    className="w-full border-2 border-[#2C1E16] bg-white px-4 py-2 font-black text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] focus:outline-none"
-                  >
-                    {PREORDER_SHIPPING_FILTERS.map((status) => (
-                      <option key={status.key} value={status.key}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <FilterMenu
+                  label="出貨進度"
+                  value={preorderShippingFilter}
+                  options={PREORDER_SHIPPING_FILTERS}
+                  onChange={(value) => setPreorderShippingFilter(value)}
+                />
 
                 {filteredPreorderOrders.length > 0 ? (
                   filteredPreorderOrders.map((order) => (
@@ -483,24 +650,12 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mb-8 max-w-xs">
-                  <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
-                    出貨進度
-                  </label>
-                  <select
-                    value={standardShippingFilter}
-                    onChange={(event) =>
-                      setStandardShippingFilter(event.target.value as ShippingStatusCode | "ALL")
-                    }
-                    className="w-full border-2 border-[#2C1E16] bg-white px-4 py-2 font-black text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] focus:outline-none"
-                  >
-                    {PREORDER_SHIPPING_FILTERS.map((status) => (
-                      <option key={status.key} value={status.key}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <FilterMenu
+                  label="出貨進度"
+                  value={standardShippingFilter}
+                  options={PREORDER_SHIPPING_FILTERS}
+                  onChange={(value) => setStandardShippingFilter(value)}
+                />
 
                 {filteredStandardOrders.length > 0 ? (
                   filteredStandardOrders.map((order) => (
@@ -524,11 +679,224 @@ export default function App() {
 
       <footer className="py-6 text-center text-sm font-bold text-[#2A5C5B]">
         <p>© 2026 俗三連線中. All Rights Reserved.</p>
-        <p className="mt-1 text-xs text-gray-600">系統每 5 分鐘自動更新</p>
-        <p className="mt-2 text-xs text-[#2A5C5B]">
+        <p className="mt-2 text-s text-[#2A5C5B]">
           瀏覽量：今日 {pageViews?.daily ?? "--"} / 本周 {pageViews?.weekly ?? "--"} / 本月 {pageViews?.monthly ?? "--"} / 總計 {pageViews?.total ?? "--"}
         </p>
       </footer>
+    </div>
+  );
+}
+
+function AdminLoginScreen({
+  username,
+  password,
+  error,
+  isLoading,
+  onUsernameChange,
+  onPasswordChange,
+  onSubmit,
+  onBackToSearch
+}: {
+  username: string;
+  password: string;
+  error: string | null;
+  isLoading: boolean;
+  onUsernameChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent) => void;
+  onBackToSearch: () => void;
+}) {
+  return (
+    <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-lg">
+          <header className="mb-10 text-center">
+            <div className="absolute top-0 left-0 w-full h-2 bg-[#BC4A3C]"></div>
+            <div className="mb-4 flex justify-center">
+              <img
+                src={logo}
+                alt="Susan 代購系統 Logo"
+                className="h-44 w-auto object-contain"
+              />
+            </div>
+            <p className="text-lg md:text-xl font-black tracking-[0.2em] text-[#2A5C5B] py-2">
+              後台管理
+            </p>
+            <p className="text-3xl font-black tracking-[0.2em] text-[#000000]">
+              管理員登入
+            </p>
+          </header>
+
+          <form
+            onSubmit={onSubmit}
+            className="bg-white border-4 border-[#2C1E16] p-6 md:p-8 shadow-[8px_8px_0px_#2C1E16]"
+          >
+            <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
+              帳號
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => onUsernameChange(e.target.value)}
+              autoComplete="username"
+              className="mb-5 w-full px-4 py-4 bg-[#F5F0E6] border-4 border-[#2C1E16] text-lg font-bold focus:outline-none focus:bg-white transition-colors shadow-[inset_2px_2px_0px_rgba(0,0,0,0.1)]"
+              required
+            />
+
+            <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
+              密碼
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              autoComplete="current-password"
+              className="mb-6 w-full px-4 py-4 bg-[#F5F0E6] border-4 border-[#2C1E16] text-lg font-bold focus:outline-none focus:bg-white transition-colors shadow-[inset_2px_2px_0px_rgba(0,0,0,0.1)]"
+              required
+            />
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-4 bg-[#BC4A3C] text-[#EBE3CC] font-black text-xl border-4 border-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[2px_2px_0px_#2C1E16] active:translate-y-[4px] active:translate-x-[4px] active:shadow-none transition-all flex justify-center items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+            >
+              {isLoading ? (
+                <span className="animate-pulse">登入中...</span>
+              ) : (
+                <>
+                  <LogIn size={24} /> 登入
+                </>
+              )}
+            </button>
+
+            {error && (
+              <div className="mt-6 flex items-start gap-2 text-[#BC4A3C] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
+                <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-bold leading-relaxed">{error}</p>
+              </div>
+            )}
+          </form>
+
+          <button
+            type="button"
+            onClick={onBackToSearch}
+            className="mt-6 mx-auto flex items-center gap-2 font-bold px-4 py-2 bg-white border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] hover:bg-[#F5F0E6] transition-colors"
+          >
+            <ArrowLeft size={18} />
+            返回查詢
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboardScreen({
+  username,
+  expiresAt,
+  isSyncing,
+  syncMessage,
+  syncError,
+  onSync,
+  onLogout,
+  onBackToSearch
+}: {
+  username: string;
+  expiresAt?: string;
+  isSyncing: boolean;
+  syncMessage: string | null;
+  syncError: string | null;
+  onSync: () => void;
+  onLogout: () => void;
+  onBackToSearch: () => void;
+}) {
+  return (
+    <div className="flex-1">
+      <div className="max-w-3xl mx-auto p-4 md:p-8 pt-8">
+        <div className="flex flex-row justify-between items-end mb-8 border-b-4 border-[#2C1E16] pb-4 relative w-full">
+          <button
+            type="button"
+            onClick={onBackToSearch}
+            className="flex items-center gap-2 font-bold px-4 py-2 bg-white border-2 border-[#2C1E16] shadow-[2px_2px_0px_#2C1E16] hover:bg-[#F5F0E6] transition-colors shrink-0 z-20"
+          >
+            <ArrowLeft size={18} />
+            <span className="hidden xs:inline">返回查詢</span>
+          </button>
+          <div className="flex flex-row items-end flex-1 justify-end">
+            <div className="shrink-0 z-10 relative -mb-[21px] order-2">
+              <img
+                src={icon}
+                alt="後台圖示"
+                className="h-20 md:h-20 w-auto object-contain block"
+              />
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black leading-tight text-right order-1 pr-1">
+              <span>
+                Susan
+                <span className="text-[#BC4A3C] underline decoration-[#D9A036] decoration-4 underline-offset-4">
+                  後台
+                </span>
+              </span>
+            </h2>
+          </div>
+        </div>
+
+        <section className="bg-white border-4 border-[#2C1E16] p-5 md:p-6 shadow-[8px_8px_0px_#2C1E16]">
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center border-2 border-[#2C1E16] bg-[#2A5C5B] text-[#EBE3CC] shadow-[2px_2px_0px_#2C1E16]">
+                <LockKeyhole size={24} />
+              </div>
+              <div>
+                <p className="text-lg font-black text-[#2C1E16]">{username}</p>
+                {expiresAt && (
+                  <p className="text-xs md:text-sm font-bold text-[#2A5C5B]">
+                    登入有效至：{formatDateTime(expiresAt)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] transition-colors"
+            >
+              <LogOut size={18} />
+              登出
+            </button>
+          </div>
+
+          <div className="border-t-4 border-[#2C1E16] pt-6">
+            <p className="mb-4 text-xl md:text-2xl font-black text-[#2C1E16]">
+              Google Sheet 同步
+            </p>
+            <button
+              type="button"
+              onClick={onSync}
+              disabled={isSyncing}
+              className="w-full py-4 bg-[#BC4A3C] text-[#EBE3CC] font-black text-xl border-4 border-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[2px_2px_0px_#2C1E16] active:translate-y-[4px] active:translate-x-[4px] active:shadow-none transition-all flex justify-center items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+            >
+              <RefreshCw size={24} className={isSyncing ? "animate-spin" : ""} />
+              {isSyncing ? "同步中..." : "同步 Google Sheet"}
+            </button>
+
+            {syncMessage && (
+              <div className="mt-6 flex items-start gap-2 text-[#2A5C5B] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
+                <CheckCircle2 size={20} className="flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-bold leading-relaxed">{syncMessage}</p>
+              </div>
+            )}
+
+            {syncError && (
+              <div className="mt-6 flex items-start gap-2 text-[#BC4A3C] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
+                <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-bold leading-relaxed">{syncError}</p>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -539,6 +907,75 @@ function EmptyState({ label }: { label: string }) {
       <Package size={48} className="mx-auto mb-4 text-[#D9A036] opacity-50" />
       <h3 className="text-xl font-black text-[#2C1E16] mb-2">查無相關狀態的訂單</h3>
       <p className="font-bold text-[#2A5C5B]">目前「{label}」分類下沒有任何紀錄喔！</p>
+    </div>
+  );
+}
+
+type ShippingFilterOption = {
+  key: ShippingStatusCode | "ALL";
+  label: string;
+};
+
+function FilterMenu({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: ShippingStatusCode | "ALL";
+  options: ShippingFilterOption[];
+  onChange: (value: ShippingStatusCode | "ALL") => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedLabel = options.find((option) => option.key === value)?.label ?? "全部";
+
+  return (
+    <div
+      className="relative mb-8 max-w-xs"
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget as Node | null;
+        if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+          setIsOpen(false);
+        }
+      }}
+    >
+      <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
+        {label}
+      </label>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 border-2 border-[#2C1E16] bg-white px-4 py-2 font-black text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] transition-all hover:bg-[#F5F0E6] focus:outline-none"
+      >
+        <span>{selectedLabel}</span>
+        <ChevronDown
+          size={18}
+          className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 z-30 mt-2 flex flex-col gap-2 border-2 border-[#2C1E16] bg-[#EBE3CC] p-2 shadow-[4px_4px_0px_#2C1E16]">
+          {options.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => {
+                onChange(option.key);
+                setIsOpen(false);
+              }}
+              className={`px-4 py-2 text-left font-black border-2 border-[#2C1E16] transition-all ${
+                value === option.key
+                  ? "bg-[#BC4A3C] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[1px] translate-x-[1px]"
+                  : "bg-white text-[#2C1E16] shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[2px_2px_0px_#2C1E16]"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -36,7 +36,6 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -127,6 +126,7 @@ public class SheetSyncService {
         boolean hasQueuedColumn = containsHeader(headerIndexMap, QUEUED_HEADER);
         boolean hasLegacyQueuedColumn = containsHeader(headerIndexMap, LEGACY_QUEUED_HEADER);
         boolean hasPreorderStatusColumn = containsHeader(headerIndexMap, PREORDER_STATUS_HEADER);
+        LocalDateTime syncTimestamp = LocalDateTime.now();
         Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
 
         for (int i = headerIndex + 1; i < records.size(); i++) {
@@ -145,7 +145,7 @@ public class SheetSyncService {
                 newGroup.setGroupName(groupName);
                 newGroup.setSourceKey(sourceKey);
                 newGroup.setSourceType(sourceType);
-                newGroup.setLastUpdated(LocalDateTime.now());
+                newGroup.setLastUpdated(syncTimestamp);
                 return newGroup;
             });
 
@@ -198,6 +198,9 @@ public class SheetSyncService {
             group.addItem(item);
         }
 
+        LocalDateTime completedAt = LocalDateTime.now();
+        groupByBuyer.values().forEach(group -> group.setLastUpdated(completedAt));
+
         List<OrderGroup> existingGroups = orderGroupRepository.findByGroupNameAndSourceKeyIncludingLegacy(groupName, sourceKey);
         orderGroupRepository.saveAll(groupByBuyer.values());
         if (!existingGroups.isEmpty()) {
@@ -205,28 +208,30 @@ public class SheetSyncService {
         }
     }
 
-    @Scheduled(fixedRate = 300000)
-    public void syncFromGoogleSheetUrl() {
-        syncFromGoogleSheets();
+    public SyncRunResult syncFromGoogleSheetUrl() {
+        return syncFromGoogleSheets();
     }
 
-    public void syncFromGoogleSheets() {
+    public SyncRunResult syncFromGoogleSheets() {
         List<SyncSource> sources = resolveSyncSources();
         if (sources.isEmpty()) {
-            return;
+            return new SyncRunResult(SyncRunStatus.NO_SOURCES, null);
         }
         if (!syncInProgress.compareAndSet(false, true)) {
             log.warn("Sheet sync is already running.");
-            return;
+            return new SyncRunResult(SyncRunStatus.ALREADY_RUNNING, null);
         }
 
+        LocalDateTime syncTimestamp = LocalDateTime.now();
         int successCount = 0;
         Exception firstFailure = null;
+        List<String> successfulSourceKeys = new ArrayList<>();
         try {
             for (SyncSource source : sources) {
                 try {
-                    syncSource(source);
+                    syncSource(source, syncTimestamp);
                     successCount += 1;
+                    successfulSourceKeys.add(source.sourceKey());
                 } catch (Exception e) {
                     if (firstFailure == null) {
                         firstFailure = e;
@@ -238,6 +243,15 @@ public class SheetSyncService {
             if (successCount == 0 && firstFailure != null) {
                 throw new IllegalStateException("All Google Sheet sync sources failed.", firstFailure);
             }
+
+            LocalDateTime completedAt = LocalDateTime.now();
+            if (!successfulSourceKeys.isEmpty()) {
+                orderGroupRepository.updateLastUpdatedForSyncedSources(
+                        successfulSourceKeys,
+                        syncTimestamp,
+                        completedAt);
+            }
+            return new SyncRunResult(SyncRunStatus.SYNCED, completedAt);
         } finally {
             syncInProgress.set(false);
         }
@@ -267,7 +281,7 @@ public class SheetSyncService {
         return 1;
     }
 
-    private void syncSource(SyncSource source) {
+    private void syncSource(SyncSource source, LocalDateTime syncTimestamp) {
         byte[] excelBytes = readExcelBytes(source.url());
         if (logSheetNamesEnabled) {
             logSheetNames(excelBytes);
@@ -286,7 +300,8 @@ public class SheetSyncService {
                     maxRowsWarn,
                     itemBatchSize,
                     sheetNameMatchMaxCompareLength,
-                    sheetNameMatchMinCompareLength);
+                    sheetNameMatchMinCompareLength,
+                    syncTimestamp);
             EasyExcel.read(inputStream, SheetRowDto.class, listener).doReadAll();
             log.info("Synced source {} sheets={}", source.sourceKey(), listener.getProcessedSheets());
             if (visibleSheets != null) {
@@ -564,5 +579,14 @@ public class SheetSyncService {
     }
 
     private record SyncSource(String sourceKey, String url, GroupSourceType defaultSourceType) {
+    }
+
+    public enum SyncRunStatus {
+        SYNCED,
+        NO_SOURCES,
+        ALREADY_RUNNING
+    }
+
+    public record SyncRunResult(SyncRunStatus status, LocalDateTime syncedAt) {
     }
 }

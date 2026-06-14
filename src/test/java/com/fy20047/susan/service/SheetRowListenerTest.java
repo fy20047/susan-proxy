@@ -13,13 +13,16 @@ import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.read.metadata.holder.ReadRowHolder;
 import com.alibaba.excel.read.metadata.holder.ReadSheetHolder;
 import com.fy20047.susan.domain.GroupSourceType;
+import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class SheetRowListenerTest {
 
@@ -207,6 +210,43 @@ class SheetRowListenerTest {
         verify(writer).prepareReplace("受注測試團", "preorder");
         verify(writer).createGroup(any());
         verify(writer).saveItems(anyList());
+    }
+
+    @Test
+    void usesProvidedSyncTimestampForCreatedGroups() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        when(writer.createGroup(any())).thenReturn(1L);
+        LocalDateTime syncTimestamp = LocalDateTime.of(2026, 6, 14, 15, 30);
+
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16,
+                syncTimestamp);
+        AnalysisContext context = mockContext("場販測試團");
+
+        listener.invokeHeadMap(headerMapWithoutJpyPrice(), context);
+
+        SheetRowDto row = new SheetRowDto();
+        row.setBuyerNickname("Buyer");
+        row.setItemName("測試商品");
+        row.setDepositAmount(100);
+        row.setBalanceAmount(25);
+        row.setTotalAmount(125);
+        row.setQuantity(1);
+
+        listener.invoke(row, context);
+        listener.doAfterAllAnalysed(context);
+
+        ArgumentCaptor<OrderGroup> captor = ArgumentCaptor.forClass(OrderGroup.class);
+        verify(writer).createGroup(captor.capture());
+        Assertions.assertEquals(syncTimestamp, captor.getValue().getLastUpdated());
     }
 
     private static AnalysisContext mockContext(String sheetName) {

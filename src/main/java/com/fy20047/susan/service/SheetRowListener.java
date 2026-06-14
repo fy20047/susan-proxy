@@ -39,6 +39,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private final int itemBatchSize;
     private final int sheetNameMatchMaxCompareLength;
     private final int sheetNameMatchMinCompareLength;
+    private final LocalDateTime syncTimestamp;
     private final Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
     private final Map<String, Long> groupIdByBuyer = new LinkedHashMap<>();
     private final Map<Long, Integer> bonusByGroupId = new LinkedHashMap<>();
@@ -97,6 +98,30 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             int itemBatchSize,
             int sheetNameMatchMaxCompareLength,
             int sheetNameMatchMinCompareLength) {
+        this(
+                sheetSyncWriter,
+                sourceKey,
+                defaultSourceType,
+                sheetConfigs,
+                streamByBuyer,
+                maxRowsWarn,
+                itemBatchSize,
+                sheetNameMatchMaxCompareLength,
+                sheetNameMatchMinCompareLength,
+                LocalDateTime.now());
+    }
+
+    public SheetRowListener(
+            SheetSyncWriter sheetSyncWriter,
+            String sourceKey,
+            GroupSourceType defaultSourceType,
+            Map<String, SheetSyncSheetConfig> sheetConfigs,
+            boolean streamByBuyer,
+            int maxRowsWarn,
+            int itemBatchSize,
+            int sheetNameMatchMaxCompareLength,
+            int sheetNameMatchMinCompareLength,
+            LocalDateTime syncTimestamp) {
         this.sheetSyncWriter = sheetSyncWriter;
         this.sourceKey = sourceKey;
         this.defaultSourceType = defaultSourceType == null ? GroupSourceType.STANDARD : defaultSourceType;
@@ -106,6 +131,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         this.itemBatchSize = Math.max(1, itemBatchSize);
         this.sheetNameMatchMaxCompareLength = Math.max(1, sheetNameMatchMaxCompareLength);
         this.sheetNameMatchMinCompareLength = Math.max(1, sheetNameMatchMinCompareLength);
+        this.syncTimestamp = syncTimestamp == null ? LocalDateTime.now() : syncTimestamp;
     }
 
     @Override
@@ -315,7 +341,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         newGroup.setGroupName(currentSheetName);
         newGroup.setSourceKey(sourceKey);
         newGroup.setSourceType(currentSourceType);
-        newGroup.setLastUpdated(LocalDateTime.now());
+        newGroup.setLastUpdated(syncTimestamp);
         return newGroup;
     }
 

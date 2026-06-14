@@ -6,6 +6,9 @@ app:
   sheet-sync:
     sheet-name-match-max-compare-length: 64
     sheet-name-match-min-compare-length: 16
+  admin:
+    username: ${ADMIN_USERNAME:catcanfly1215}
+    password: ${ADMIN_PASSWORD:Aa0425228305}
 
 spring:
   application:

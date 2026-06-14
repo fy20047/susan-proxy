@@ -26,7 +26,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private static final Logger log = LoggerFactory.getLogger(SheetRowListener.class);
     private static final Set<String> SETTINGS_SHEET_NAMES = Set.of("設定");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
-            "對帳", "定金80%", "尾款20%", "購買總額", "團友", "品項");
+            "定金80%", "尾款20%", "購買總額", "團友", "品項");
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
     private static final String QUEUED_HEADER = resolveExcelHeader("queued");
     private static final String LEGACY_QUEUED_HEADER = resolveExcelHeader("legacyQueued");

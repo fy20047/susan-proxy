@@ -79,7 +79,7 @@ public class SheetSyncService {
     private static final String SHIPPED_HEADER = resolveExcelHeader("shipped");
     private static final String PREORDER_STATUS_HEADER = resolveExcelHeader("preorderStatus");
     private static final Set<String> REQUIRED_HEADERS = Set.of(
-            RECONCILED_HEADER, DEPOSIT_AMOUNT_HEADER, BALANCE_AMOUNT_HEADER, TOTAL_AMOUNT_HEADER, BUYER_HEADER, ITEM_NAME_HEADER);
+            DEPOSIT_AMOUNT_HEADER, BALANCE_AMOUNT_HEADER, TOTAL_AMOUNT_HEADER, BUYER_HEADER, ITEM_NAME_HEADER);
 
     @Value("${app.google-sheet-url:}")
     private String legacyGoogleSheetUrl;

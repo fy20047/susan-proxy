@@ -100,6 +100,18 @@ class SheetSyncServiceTest {
     }
 
     @Test
+    void syncFromCsvAcceptsMissingReconciledAndArrivedHeadersWhenShippingProgressExists() throws IOException {
+        OrderItem item = syncSingleItem(
+                false,
+                List.of(PURCHASED, CHECKED_IN, SHIPPING_PROGRESS),
+                List.of("TRUE", "2026-07-01", "\u5df2\u62b5\u53f0\u5f85\u51fa\u8ca8"));
+
+        Assertions.assertEquals(false, item.getDepositReconciled());
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.ARRIVED, item.getItemStatus());
+        Assertions.assertEquals(com.fy20047.susan.domain.ShippingStatus.READY_TO_SHIP, item.getShippingStatus());
+    }
+
+    @Test
     void syncFromCsvTreatsEitherDepositFieldAsPaid() throws IOException {
         OrderItem item = syncSingleItem(
                 List.of(PURCHASED, CHECKED_IN),
@@ -149,12 +161,19 @@ class SheetSyncServiceTest {
     }
 
     private OrderItem syncSingleItem(List<String> extraHeaders, List<String> extraValues) throws IOException {
+        return syncSingleItem(true, extraHeaders, extraValues);
+    }
+
+    private OrderItem syncSingleItem(
+            boolean includeReconciled,
+            List<String> extraHeaders,
+            List<String> extraValues) throws IOException {
         OrderGroupRepository repository = mock(OrderGroupRepository.class);
         when(repository.findByGroupNameAndSourceKeyIncludingLegacy(anyString(), anyString())).thenReturn(List.of());
         SheetSyncService service = new SheetSyncService(repository, mock(SheetSyncWriter.class));
 
         Path csvPath = tempDir.resolve("orders.csv");
-        Files.writeString(csvPath, buildCsv(extraHeaders, extraValues), StandardCharsets.UTF_8);
+        Files.writeString(csvPath, buildCsv(includeReconciled, extraHeaders, extraValues), StandardCharsets.UTF_8);
 
         service.syncFromCsv(csvPath, "Test Group");
 
@@ -191,24 +210,32 @@ class SheetSyncServiceTest {
     }
 
     private String buildCsv(List<String> extraHeaders, List<String> extraValues) {
+        return buildCsv(true, extraHeaders, extraValues);
+    }
+
+    private String buildCsv(boolean includeReconciled, List<String> extraHeaders, List<String> extraValues) {
         List<String> headers = new java.util.ArrayList<>(List.of(
-                RECONCILED,
                 DEPOSIT_AMOUNT,
                 BALANCE_AMOUNT,
                 TOTAL_AMOUNT,
                 BUYER,
                 ITEM
         ));
+        if (includeReconciled) {
+            headers.add(0, RECONCILED);
+        }
         headers.addAll(extraHeaders);
 
         List<String> values = new java.util.ArrayList<>(List.of(
-                "TRUE",
                 "100",
                 "25",
                 "125",
                 "Buyer",
                 "Item"
         ));
+        if (includeReconciled) {
+            values.add(0, "TRUE");
+        }
         values.addAll(extraValues);
 
         return String.join(",", headers) + System.lineSeparator()

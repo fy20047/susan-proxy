@@ -166,6 +166,24 @@ class SheetRowListenerTest {
     }
 
     @Test
+    void acceptsSheetWithoutReconciledAndArrivedHeadersWhenShippingProgressExists() {
+        Map<Integer, String> headers = fieldSalesHeaderMap();
+        headers.values().remove("對帳");
+        headers.values().remove("抵台");
+
+        List<OrderItem> savedItems = readSingleRow(headers, row -> {
+            row.setPurchased("TRUE");
+            row.setCheckedIn("2026-07-01");
+            row.setShippingProgress("已抵台待出貨");
+        });
+
+        OrderItem item = savedItems.getFirst();
+        Assertions.assertEquals(false, item.getDepositReconciled());
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.ARRIVED, item.getItemStatus());
+        Assertions.assertEquals(com.fy20047.susan.domain.ShippingStatus.READY_TO_SHIP, item.getShippingStatus());
+    }
+
+    @Test
     void usesNotCheckedInColumnForReminder() {
         List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> {
             row.setCheckedIn("2026-07-01");
@@ -215,7 +233,7 @@ class SheetRowListenerTest {
         AnalysisContext context = mockContext("缺欄位分頁");
 
         Map<Integer, String> headers = headerMapWithoutJpyPrice();
-        headers.values().remove("對帳");
+        headers.values().remove("定金80%");
 
         listener.invokeHeadMap(headers, context);
 

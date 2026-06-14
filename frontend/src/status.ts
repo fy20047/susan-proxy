@@ -14,60 +14,69 @@ type StatusCarrier =
   | { itemStatus?: ItemStatusCode; shippingStatusCode?: ShippingStatusCode }
   | { statusCode?: ItemStatusCode; shippingStatusCode?: ShippingStatusCode };
 
+export type StandardStatusFilterKey =
+  | "ALL"
+  | "UNPURCHASED"
+  | "PENDING_PAYMENT"
+  | "FORWARDING"
+  | "READY_TO_SHIP"
+  | "SHIPPED";
+
+export type PreorderStatusFilterKey =
+  | "ALL"
+  | "UNPURCHASED"
+  | "PENDING_PAYMENT"
+  | "WAITING_OFFICIAL"
+  | "FORWARDING"
+  | "READY_TO_SHIP"
+  | "SHIPPED";
+
 export type StandardFilter = {
-  key: StandardItemStatusCode | "ALL";
-  label: string;
+  key: StandardStatusFilterKey;
+  label: StandardOrderStatus | "全部";
 };
 
 export type PreorderItemFilter = {
-  key: PreorderItemStatusCode | "ALL";
-  label: string;
-};
-
-export type ShippingFilter = {
-  key: ShippingStatusCode | "ALL";
-  label: string;
+  key: PreorderStatusFilterKey;
+  label: ItemStatusLabel | "全部";
 };
 
 export const STANDARD_STATUS_FILTERS: StandardFilter[] = [
   { key: "ALL", label: "全部" },
-  { key: "REGISTERED", label: "已登記" },
-  { key: "PENDING_DEPOSIT", label: "待匯定" },
-  { key: "PENDING_PURCHASE", label: "待購入" },
-  { key: "IN_TRANSIT", label: "轉送中" }
+  { key: "UNPURCHASED", label: "尚未購入" },
+  { key: "PENDING_PAYMENT", label: "待付款" },
+  { key: "FORWARDING", label: "轉送中" },
+  { key: "READY_TO_SHIP", label: "可出貨" },
+  { key: "SHIPPED", label: "已出貨" }
 ];
 
 export const PREORDER_ITEM_FILTERS: PreorderItemFilter[] = [
   { key: "ALL", label: "全部" },
-  { key: "PREORDER_REGISTERED", label: "已登記" },
-  { key: "PREORDER_PENDING_PURCHASE", label: "待購入" },
-  { key: "PREORDER_PENDING_DEPOSIT", label: "待匯定" },
-  { key: "PREORDER_PURCHASED", label: "已購入" },
-  { key: "PREORDER_FORWARDING", label: "轉送中" },
-  { key: "PREORDER_ARRIVED", label: "已抵台" },
-  { key: "PREORDER_SHIPPED", label: "已出貨" }
-];
-
-export const PREORDER_SHIPPING_FILTERS: ShippingFilter[] = [
-  { key: "ALL", label: "全部" },
-  { key: "NOT_ARRIVED", label: "未抵台" },
-  { key: "READY_TO_SHIP", label: "已抵台待出貨" },
+  { key: "UNPURCHASED", label: "尚未購入" },
+  { key: "PENDING_PAYMENT", label: "待付款" },
+  { key: "WAITING_OFFICIAL", label: "等待官方出貨" },
+  { key: "FORWARDING", label: "轉送中" },
+  { key: "READY_TO_SHIP", label: "可出貨" },
   { key: "SHIPPED", label: "已出貨" }
 ];
 
 const STANDARD_STATUS_PRIORITY: Record<StandardItemStatusCode, number> = {
   REGISTERED: 1,
+  PENDING_PURCHASE: 1,
   PENDING_DEPOSIT: 2,
-  PENDING_PURCHASE: 3,
-  IN_TRANSIT: 4,
-  ARRIVED: 5,
-  SHIPPED: 6
+  IN_TRANSIT: 3,
+  ARRIVED: 4,
+  SHIPPED: 5
 };
 
-const SHIPPING_PRIORITY: Record<ShippingStatusCode, number> = {
-  NOT_ARRIVED: 1,
-  READY_TO_SHIP: 2,
-  SHIPPED: 3
+const PREORDER_STATUS_PRIORITY: Record<PreorderItemStatusCode, number> = {
+  PREORDER_REGISTERED: 1,
+  PREORDER_PENDING_PURCHASE: 1,
+  PREORDER_PENDING_DEPOSIT: 2,
+  PREORDER_PURCHASED: 3,
+  PREORDER_FORWARDING: 4,
+  PREORDER_ARRIVED: 5,
+  PREORDER_SHIPPED: 6
 };
 
 export function isPreorderItemStatus(code?: ItemStatusCode): code is PreorderItemStatusCode {
@@ -77,32 +86,26 @@ export function isPreorderItemStatus(code?: ItemStatusCode): code is PreorderIte
 export function toItemStatusLabel(code?: ItemStatusCode): ItemStatusLabel {
   switch (code) {
     case "PENDING_DEPOSIT":
-      return "待匯定";
-    case "PENDING_PURCHASE":
-      return "待購入";
-    case "IN_TRANSIT":
-      return "轉送中";
-    case "ARRIVED":
-      return "已抵台待出貨";
-    case "SHIPPED":
-      return "已出貨";
-    case "PREORDER_PENDING_PURCHASE":
-      return "待購入";
     case "PREORDER_PENDING_DEPOSIT":
-      return "待匯定";
-    case "PREORDER_PURCHASED":
-      return "已購入";
+      return "待付款";
+    case "PENDING_PURCHASE":
+    case "REGISTERED":
+    case "PREORDER_PENDING_PURCHASE":
+    case "PREORDER_REGISTERED":
+      return "尚未購入";
+    case "IN_TRANSIT":
     case "PREORDER_FORWARDING":
       return "轉送中";
+    case "ARRIVED":
     case "PREORDER_ARRIVED":
-      return "已抵台";
+      return "可出貨";
+    case "SHIPPED":
     case "PREORDER_SHIPPED":
       return "已出貨";
-    case "PREORDER_REGISTERED":
-      return "已登記";
-    case "REGISTERED":
+    case "PREORDER_PURCHASED":
+      return "等待官方出貨";
     default:
-      return "已登記";
+      return "尚未購入";
   }
 }
 
@@ -131,7 +134,7 @@ export function toShippingStatusLabel(code: ShippingStatusCode): ShippingStatusL
       return "已出貨";
     case "NOT_ARRIVED":
     default:
-      return "未抵台";
+      return "尚未抵台";
   }
 }
 
@@ -149,15 +152,15 @@ export function deriveStandardOrderStatusCode(items: StatusCarrier[]): StandardI
   return highest;
 }
 
-export function derivePreorderShippingStatusCode(items: StatusCarrier[]): ShippingStatusCode {
-  let highest: ShippingStatusCode = "NOT_ARRIVED";
+export function derivePreorderOrderStatusCode(items: StatusCarrier[]): PreorderItemStatusCode {
+  let highest: PreorderItemStatusCode = "PREORDER_REGISTERED";
   for (const item of items) {
-    const shippingStatusCode =
-      "shippingStatusCode" in item && item.shippingStatusCode
-        ? item.shippingStatusCode
-        : toShippingStatusCode(getStatusCode(item));
-    if (SHIPPING_PRIORITY[shippingStatusCode] > SHIPPING_PRIORITY[highest]) {
-      highest = shippingStatusCode;
+    const statusCode = getStatusCode(item);
+    if (!isPreorderItemStatus(statusCode)) {
+      continue;
+    }
+    if (PREORDER_STATUS_PRIORITY[statusCode] > PREORDER_STATUS_PRIORITY[highest]) {
+      highest = statusCode;
     }
   }
   return highest;
@@ -165,20 +168,27 @@ export function derivePreorderShippingStatusCode(items: StatusCarrier[]): Shippi
 
 export function getSummaryStatusClass(code: SummaryStatusCode): string {
   switch (code) {
-    case "REGISTERED":
-    case "NOT_ARRIVED":
-      return "bg-[#EBE3CC] text-[#2C1E16]";
-    case "PENDING_DEPOSIT":
-      return "bg-[#D9A036] text-[#2C1E16]";
-    case "PENDING_PURCHASE":
-      return "bg-[#2A5C5B] text-[#EBE3CC]";
-    case "IN_TRANSIT":
-      return "bg-[#5B8266] text-[#EBE3CC]";
+    case "SHIPPED":
+    case "PREORDER_SHIPPED":
+      return "bg-[#2C1E16] text-[#EBE3CC]";
     case "ARRIVED":
+    case "PREORDER_ARRIVED":
     case "READY_TO_SHIP":
       return "bg-[#BC4A3C] text-[#EBE3CC]";
-    case "SHIPPED":
-      return "bg-[#2C1E16] text-[#EBE3CC]";
+    case "IN_TRANSIT":
+    case "PREORDER_FORWARDING":
+      return "bg-[#5B8266] text-[#EBE3CC]";
+    case "PREORDER_PURCHASED":
+      return "bg-[#D9A036] text-[#2C1E16]";
+    case "PENDING_DEPOSIT":
+    case "PREORDER_PENDING_DEPOSIT":
+      return "bg-[#D9A036] text-[#2C1E16]";
+    case "PENDING_PURCHASE":
+    case "REGISTERED":
+    case "PREORDER_PENDING_PURCHASE":
+    case "PREORDER_REGISTERED":
+    case "NOT_ARRIVED":
+      return "bg-[#EBE3CC] text-[#2C1E16]";
     default:
       return "bg-gray-200 text-black";
   }
@@ -191,34 +201,67 @@ export function getItemStatusClass(status: ItemStatusLabel): string {
   switch (status) {
     case "已出貨":
       return `${base} bg-[#2C1E16] text-[#EBE3CC]`;
-    case "已抵台待出貨":
-    case "已抵台":
+    case "可出貨":
       return `${base} bg-[#BC4A3C] text-[#EBE3CC]`;
     case "轉送中":
       return `${base} bg-[#5B8266] text-[#EBE3CC]`;
-    case "待購入":
-      return `${base} bg-[#2A5C5B] text-[#EBE3CC]`;
-    case "待匯定":
-    case "已購入":
+    case "等待官方出貨":
+    case "待付款":
       return `${base} bg-[#D9A036] text-[#2C1E16]`;
-    case "已登記":
+    case "尚未購入":
     default:
       return `${base} bg-[#EBE3CC] text-[#2C1E16]`;
   }
 }
 
+export function matchesStandardFilter(
+  item: OrderItemView,
+  itemFilter: StandardStatusFilterKey
+): boolean {
+  return itemFilter === "ALL" || toStandardFilterKey(item.statusCode) === itemFilter;
+}
+
 export function matchesPreorderFilters(
   item: OrderItemView,
-  itemFilter: PreorderItemStatusCode | "ALL",
-  shippingFilter: ShippingStatusCode | "ALL"
+  itemFilter: PreorderStatusFilterKey
 ): boolean {
-  if (itemFilter !== "ALL" && item.statusCode !== itemFilter) {
-    return false;
+  return itemFilter === "ALL" || toPreorderFilterKey(item.statusCode) === itemFilter;
+}
+
+function toStandardFilterKey(code: ItemStatusCode): StandardStatusFilterKey {
+  switch (code) {
+    case "PENDING_DEPOSIT":
+      return "PENDING_PAYMENT";
+    case "IN_TRANSIT":
+      return "FORWARDING";
+    case "ARRIVED":
+      return "READY_TO_SHIP";
+    case "SHIPPED":
+      return "SHIPPED";
+    case "REGISTERED":
+    case "PENDING_PURCHASE":
+    default:
+      return "UNPURCHASED";
   }
-  if (shippingFilter !== "ALL" && item.shippingStatusCode !== shippingFilter) {
-    return false;
+}
+
+function toPreorderFilterKey(code: ItemStatusCode): PreorderStatusFilterKey {
+  switch (code) {
+    case "PREORDER_PENDING_DEPOSIT":
+      return "PENDING_PAYMENT";
+    case "PREORDER_PURCHASED":
+      return "WAITING_OFFICIAL";
+    case "PREORDER_FORWARDING":
+      return "FORWARDING";
+    case "PREORDER_ARRIVED":
+      return "READY_TO_SHIP";
+    case "PREORDER_SHIPPED":
+      return "SHIPPED";
+    case "PREORDER_REGISTERED":
+    case "PREORDER_PENDING_PURCHASE":
+    default:
+      return "UNPURCHASED";
   }
-  return true;
 }
 
 function getStatusCode(item: StatusCarrier): ItemStatusCode | undefined {

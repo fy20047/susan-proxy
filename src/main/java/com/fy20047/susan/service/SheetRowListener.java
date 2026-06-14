@@ -7,6 +7,8 @@ import com.fy20047.susan.domain.GroupSourceType;
 import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
+import com.fy20047.susan.domain.ShippingStatus;
+import com.fy20047.susan.service.SheetSyncService.SyncWarning;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private static final String QUEUED_HEADER = resolveExcelHeader("queued");
     private static final String LEGACY_QUEUED_HEADER = resolveExcelHeader("legacyQueued");
     private static final String PREORDER_STATUS_HEADER = resolveExcelHeader("preorderStatus");
+    private static final String NOT_CHECKED_IN_HEADER = resolveExcelHeader("notCheckedIn");
 
     private final SheetSyncWriter sheetSyncWriter;
     private final String sourceKey;
@@ -44,6 +47,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private final Map<String, Long> groupIdByBuyer = new LinkedHashMap<>();
     private final Map<Long, Integer> bonusByGroupId = new LinkedHashMap<>();
     private final List<OrderItem> itemBuffer = new ArrayList<>();
+    private final List<SyncWarning> warnings = new ArrayList<>();
     private final Set<String> processedSheets = new HashSet<>();
 
     private int totalGroupsSaved = 0;
@@ -59,6 +63,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean hasQueuedColumn = false;
     private boolean hasLegacyQueuedColumn = false;
     private boolean hasPreorderStatusColumn = false;
+    private boolean hasNotCheckedInColumn = false;
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
         this(sheetSyncWriter, null, GroupSourceType.STANDARD, null, false, 0, 200, 64, 16);
@@ -150,6 +155,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         hasQueuedColumn = false;
         hasLegacyQueuedColumn = false;
         hasPreorderStatusColumn = false;
+        hasNotCheckedInColumn = false;
         validSheet = false;
         skipCurrentSheet = shouldSkipSheet(currentSheetName);
 
@@ -178,6 +184,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         hasQueuedColumn = containsHeader(headers, QUEUED_HEADER);
         hasLegacyQueuedColumn = containsHeader(headers, LEGACY_QUEUED_HEADER);
         hasPreorderStatusColumn = containsHeader(headers, PREORDER_STATUS_HEADER);
+        hasNotCheckedInColumn = containsHeader(headers, NOT_CHECKED_IN_HEADER);
         currentSourceType = resolveCurrentSourceType(resolveSheetConfig(currentSheetName), hasPreorderStatusColumn);
         validSheet = true;
     }
@@ -250,13 +257,19 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             item.setOrderRank(safeString(row.getOrderRank()));
             item.setOrderSn(safeString(row.getOrderSn()));
             item.setQueued(resolveQueued(row));
-            boolean isCheckedIn = parseBoolean(row.getCheckedIn());
-            item.setCheckedIn(isCheckedIn);
+            item.setCheckedIn(hasNotCheckedInColumn && parseBoolean(row.getNotCheckedIn()));
             item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
             String depositPaidDate = safeString(row.getDepositPaidDate());
+            String depositConfirmation = safeString(row.getCheckedIn());
+            boolean isDepositPaid = !depositPaidDate.isEmpty() || !depositConfirmation.isEmpty();
+            if (depositPaidDate.isEmpty() != depositConfirmation.isEmpty()) {
+                addWarning(context, buyerNickname, itemName, "付定日與對只有其中一欄有內容，已視為已付訂金。");
+            }
             item.setDepositPaidDate(depositPaidDate);
+            item.setDepositPaid(isDepositPaid);
             item.setDepositReconciled(parseBoolean(row.getReconciled()));
-            item.setPurchased(parseBoolean(row.getPurchased()));
+            boolean isPurchased = parseBoolean(row.getPurchased());
+            item.setPurchased(isPurchased);
             String checkMark = safeString(row.getCheckMark());
             if (checkMark.isEmpty() && !depositPaidDate.isEmpty()) {
                 checkMark = depositPaidDate;
@@ -268,8 +281,10 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             item.setItemName(itemName);
             item.setQuantity(defaultInt(row.getQuantity(), 1));
             item.setJpyPrice(row.getJpyPrice());
-            item.setItemStatus(resolveItemStatus(row, itemName, depositPaidDate, isCheckedIn));
-            item.setShippingStatus(resolveShippingStatus(row));
+            ShippingStatus shippingStatus = resolveShippingStatus(row);
+            item.setItemStatus(resolveItemStatus(row, itemName, isPurchased, isDepositPaid, shippingStatus));
+            item.setShippingStatus(shippingStatus);
+            validateShippingProgress(row, context, buyerNickname, itemName, isPurchased, isDepositPaid, shippingStatus);
 
             if (streamByBuyer) {
                 OrderGroup groupRef = new OrderGroup();
@@ -335,6 +350,85 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         return totalGroupsSaved;
     }
 
+    public List<SyncWarning> getWarnings() {
+        return List.copyOf(warnings);
+    }
+
+    private void validateShippingProgress(
+            SheetRowDto row,
+            AnalysisContext context,
+            String buyerNickname,
+            String itemName,
+            boolean isPurchased,
+            boolean isDepositPaid,
+            ShippingStatus shippingStatus) {
+        String shippingProgress = safeString(row.getShippingProgress());
+        if (!shippingProgress.isEmpty()) {
+            if ("已抵台可出貨".equals(shippingProgress.trim())) {
+                addWarning(context, buyerNickname, itemName, "出貨進度「已抵台可出貨」應改為「已抵台待出貨」，已暫時視為可出貨。");
+            } else if (!isKnownShippingProgress(shippingProgress, currentSourceType)) {
+                addWarning(context, buyerNickname, itemName, "出貨進度值無法辨識：「" + shippingProgress + "」，已暫時視為尚未抵台。");
+            }
+
+            if (currentSourceType == GroupSourceType.STANDARD) {
+                ShippingStatus legacyStatus = StatusResolver.determineShipping(
+                        parseBoolean(row.getArrived()),
+                        parseBoolean(row.getShipped()));
+                if ((parseBoolean(row.getArrived()) || parseBoolean(row.getShipped())) && legacyStatus != shippingStatus) {
+                    addWarning(context, buyerNickname, itemName, "出貨進度與舊欄位「抵台 / 出貨狀態」不一致，已優先採用出貨進度。");
+                }
+            } else {
+                String preorderStatus = safeString(row.getPreorderStatus());
+                if (!preorderStatus.isEmpty()) {
+                    ShippingStatus legacyStatus = StatusResolver.determinePreorderShipping(preorderStatus, parseBoolean(row.getShipped()));
+                    if (legacyStatus != shippingStatus) {
+                        addWarning(context, buyerNickname, itemName, "出貨進度與舊欄位「貨況」不一致，已優先採用出貨進度。");
+                    }
+                }
+            }
+        }
+
+        boolean advancedShippingProgress =
+                shippingStatus == ShippingStatus.READY_TO_SHIP
+                        || shippingStatus == ShippingStatus.SHIPPED
+                        || "官方已發貨".equals(shippingProgress.trim());
+        if (advancedShippingProgress && (!isPurchased || !isDepositPaid)) {
+            addWarning(context, buyerNickname, itemName, "出貨進度已進入出貨階段，但已採購或訂金資訊不完整。");
+        }
+    }
+
+    private boolean isKnownShippingProgress(String rawValue, GroupSourceType sourceType) {
+        String value = rawValue == null ? "" : rawValue.trim();
+        if (sourceType == GroupSourceType.PREORDER) {
+            return Set.of("已下單待發貨", "官方已發貨", "已抵台待出貨", "已抵台可出貨", "已出貨")
+                    .contains(value);
+        }
+        return Set.of("尚未抵台", "未抵台", "已抵台待出貨", "已抵台可出貨", "已出貨")
+                .contains(value);
+    }
+
+    private void addWarning(
+            AnalysisContext context,
+            String buyerNickname,
+            String itemName,
+            String message) {
+        warnings.add(new SyncWarning(
+                sourceKey,
+                currentSheetName,
+                resolveDisplayRowNumber(context),
+                buyerNickname,
+                itemName,
+                message));
+    }
+
+    private int resolveDisplayRowNumber(AnalysisContext context) {
+        if (context == null || context.readRowHolder() == null) {
+            return rowCount + 1;
+        }
+        int rowIndex = context.readRowHolder().getRowIndex();
+        return rowIndex >= 0 ? rowIndex + 1 : rowCount + 1;
+    }
+
     private OrderGroup buildGroupSkeleton(String buyerNickname) {
         OrderGroup newGroup = new OrderGroup();
         newGroup.setBuyerNickname(buyerNickname);
@@ -348,22 +442,28 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private ItemStatus resolveItemStatus(
             SheetRowDto row,
             String itemName,
-            String depositPaidDate,
-            boolean isCheckedIn) {
-        if (currentSourceType == GroupSourceType.PREORDER && hasPreorderStatusColumn) {
-            return StatusResolver.determinePreorder(row.getPreorderStatus(), parseBoolean(row.getShipped()));
+            boolean isPurchased,
+            boolean isDepositPaid,
+            ShippingStatus shippingStatus) {
+        if (currentSourceType == GroupSourceType.PREORDER) {
+            return StatusResolver.determinePreorder(
+                    itemName,
+                    isPurchased,
+                    isDepositPaid,
+                    row.getShippingProgress(),
+                    row.getPreorderStatus(),
+                    parseBoolean(row.getShipped()));
         }
 
-        boolean isPurchased = parseBoolean(row.getPurchased());
-        return StatusResolver.determineStandard(itemName, isPurchased, depositPaidDate, isCheckedIn);
+        return StatusResolver.determineStandard(itemName, isPurchased, isDepositPaid, shippingStatus);
     }
 
-    private com.fy20047.susan.domain.ShippingStatus resolveShippingStatus(SheetRowDto row) {
+    private ShippingStatus resolveShippingStatus(SheetRowDto row) {
         boolean isShipped = parseBoolean(row.getShipped());
-        if (currentSourceType == GroupSourceType.PREORDER && hasPreorderStatusColumn) {
-            return StatusResolver.determinePreorderShipping(row.getPreorderStatus(), isShipped);
+        if (currentSourceType == GroupSourceType.PREORDER) {
+            return StatusResolver.determinePreorderShipping(row.getShippingProgress(), row.getPreorderStatus(), isShipped);
         }
-        return StatusResolver.determineShipping(parseBoolean(row.getArrived()), isShipped);
+        return StatusResolver.determineStandardShipping(row.getShippingProgress(), parseBoolean(row.getArrived()), isShipped);
     }
 
     private Boolean resolveQueued(SheetRowDto row) {

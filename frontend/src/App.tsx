@@ -3,7 +3,6 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
-  ChevronDown,
   Copy,
   ExternalLink,
   LockKeyhole,
@@ -18,6 +17,7 @@ import {
 import {
   AdminApiError,
   AdminSession,
+  AdminSyncWarning,
   SheetSyncSource,
   SheetSyncSourceType,
   createSheetSyncSource,
@@ -33,20 +33,17 @@ import { fetchOrders } from "./api/orders";
 import { recordPageView } from "./api/pageViews";
 import OrderCard from "./components/OrderCard";
 import {
+  matchesStandardFilter,
   matchesPreorderFilters,
   PREORDER_ITEM_FILTERS,
-  PREORDER_SHIPPING_FILTERS,
   STANDARD_STATUS_FILTERS,
-  toShippingStatusLabel,
-  toStandardOrderStatusLabel
+  type PreorderStatusFilterKey,
+  type StandardStatusFilterKey
 } from "./status";
 import { buildOrderView, rebuildOrderView } from "./transform";
 import {
   OrderView,
-  PageViewStats,
-  PreorderItemStatusCode,
-  ShippingStatusCode,
-  StandardItemStatusCode
+  PageViewStats
 } from "./types";
 import logo from "./image/logo1.png";
 import icon from "./image/icon.png";
@@ -109,6 +106,17 @@ function formatSyncResult(result: {
   return `同步完成：${result.syncedSources}/${result.totalSources} 份表單。${syncedAt}`;
 }
 
+function formatSyncWarning(warning: AdminSyncWarning): string {
+  const parts = [
+    warning.source,
+    warning.sheetName,
+    warning.rowNumber ? `第 ${warning.rowNumber} 列` : "",
+    warning.buyerNickname,
+    warning.itemName
+  ].filter(Boolean);
+  return `${parts.join(" / ")}：${warning.message}`;
+}
+
 function toSourceTypeLabel(sourceType: SheetSyncSourceType): string {
   return sourceType === "PREORDER" ? "受注團" : "一般團";
 }
@@ -131,6 +139,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncWarnings, setSyncWarnings] = useState<AdminSyncWarning[]>([]);
   const [isAdminSettingsLoading, setIsAdminSettingsLoading] = useState(false);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
   const [sheetSources, setSheetSources] = useState<SheetSyncSource[]>([]);
@@ -142,10 +151,8 @@ export default function App() {
   const [syncingSourceId, setSyncingSourceId] = useState<number | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
   const [orders, setOrders] = useState<OrderView[]>([]);
-  const [standardFilter, setStandardFilter] = useState<StandardItemStatusCode | "ALL">("ALL");
-  const [standardShippingFilter, setStandardShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
-  const [preorderItemFilter, setPreorderItemFilter] = useState<PreorderItemStatusCode | "ALL">("ALL");
-  const [preorderShippingFilter, setPreorderShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
+  const [standardFilter, setStandardFilter] = useState<StandardStatusFilterKey>("ALL");
+  const [preorderItemFilter, setPreorderItemFilter] = useState<PreorderStatusFilterKey>("ALL");
   const [error, setError] = useState<string | null>(null);
   const [pageViews, setPageViews] = useState<PageViewStats | null>(null);
   const [selectedQuickOrderIds, setSelectedQuickOrderIds] = useState<number[]>([]);
@@ -186,6 +193,7 @@ export default function App() {
         const message =
           err instanceof Error ? err.message : "讀取後台設定失敗，請稍後再試。";
         setSyncError(message);
+        setSyncWarnings([]);
       })
       .finally(() => {
         if (isActive) {
@@ -208,13 +216,13 @@ export default function App() {
   );
 
   const filteredPreorderOrders = useMemo(() => {
-    if (preorderItemFilter === "ALL" && preorderShippingFilter === "ALL") {
+    if (preorderItemFilter === "ALL") {
       return preorderOrders;
     }
 
     return preorderOrders.reduce<OrderView[]>((acc, order) => {
       const items = order.items.filter((item) =>
-        matchesPreorderFilters(item, preorderItemFilter, preorderShippingFilter)
+        matchesPreorderFilters(item, preorderItemFilter)
       );
       if (!items.length) {
         return acc;
@@ -222,27 +230,22 @@ export default function App() {
       acc.push(rebuildOrderView(order, items));
       return acc;
     }, []);
-  }, [preorderOrders, preorderItemFilter, preorderShippingFilter]);
+  }, [preorderOrders, preorderItemFilter]);
 
   const filteredStandardOrders = useMemo(() => {
-    if (standardFilter === "ALL" && standardShippingFilter === "ALL") {
+    if (standardFilter === "ALL") {
       return standardOrders;
     }
 
     return standardOrders.reduce<OrderView[]>((acc, order) => {
-      const items = order.items.filter((item) => {
-        const matchesItemStatus = standardFilter === "ALL" || item.statusCode === standardFilter;
-        const matchesShippingStatus =
-          standardShippingFilter === "ALL" || item.shippingStatusCode === standardShippingFilter;
-        return matchesItemStatus && matchesShippingStatus;
-      });
+      const items = order.items.filter((item) => matchesStandardFilter(item, standardFilter));
       if (!items.length) {
         return acc;
       }
       acc.push(rebuildOrderView(order, items));
       return acc;
     }, []);
-  }, [standardOrders, standardFilter, standardShippingFilter]);
+  }, [standardOrders, standardFilter]);
 
   const quickOrderEligibleOrders = useMemo(
     () =>
@@ -286,21 +289,16 @@ export default function App() {
     return latest.toLocaleString("zh-TW", { hour12: false });
   }, [orders]);
 
-  const showPreorderStatus =
-    preorderItemFilter !== "ALL" || preorderShippingFilter !== "ALL";
-  const showStandardStatus = standardFilter !== "ALL" || standardShippingFilter !== "ALL";
+  const showPreorderStatus = preorderItemFilter !== "ALL";
+  const showStandardStatus = standardFilter !== "ALL";
   const preorderEmptyLabel =
-    preorderShippingFilter !== "ALL"
-      ? toShippingStatusLabel(preorderShippingFilter)
-      : preorderItemFilter === "ALL"
-        ? "全部"
-        : PREORDER_ITEM_FILTERS.find((filter) => filter.key === preorderItemFilter)?.label ?? "全部";
+    preorderItemFilter === "ALL"
+      ? "全部"
+      : PREORDER_ITEM_FILTERS.find((filter) => filter.key === preorderItemFilter)?.label ?? "全部";
   const standardEmptyLabel =
-    standardShippingFilter !== "ALL"
-      ? toShippingStatusLabel(standardShippingFilter)
-      : standardFilter === "ALL"
-        ? "全部"
-        : toStandardOrderStatusLabel(standardFilter);
+    standardFilter === "ALL"
+      ? "全部"
+      : STANDARD_STATUS_FILTERS.find((filter) => filter.key === standardFilter)?.label ?? "全部";
 
   const handleAdminUnauthorized = (err: unknown): boolean => {
     if (err instanceof AdminApiError && err.status === 401) {
@@ -338,6 +336,7 @@ export default function App() {
       setAdminPassword("");
       setSyncMessage(null);
       setSyncError(null);
+      setSyncWarnings([]);
       setCurrentPage("admin-dashboard");
       window.history.replaceState(null, "", "/admin");
     } catch (err) {
@@ -365,6 +364,7 @@ export default function App() {
     setAdminLoginError(null);
     setSyncMessage(null);
     setSyncError(null);
+    setSyncWarnings([]);
     setAutoSyncEnabled(false);
     setSheetSources([]);
     setNewSourceName("");
@@ -384,9 +384,11 @@ export default function App() {
     setIsSyncing(true);
     setSyncMessage(null);
     setSyncError(null);
+    setSyncWarnings([]);
     try {
       const result = await syncGoogleSheet(adminSession.token);
       setSyncMessage(formatSyncResult(result));
+      setSyncWarnings(result.warnings ?? []);
       await refreshAdminSettings(adminSession.token);
     } catch (err) {
       if (handleAdminUnauthorized(err)) {
@@ -411,6 +413,7 @@ export default function App() {
     setIsAutoSyncSaving(true);
     setSyncMessage(null);
     setSyncError(null);
+    setSyncWarnings([]);
     try {
       const settings = await updateAutoSync(adminSession.token, !autoSyncEnabled);
       setAutoSyncEnabled(settings.autoSyncEnabled);
@@ -445,6 +448,7 @@ export default function App() {
     setIsAddingSource(true);
     setSyncMessage(null);
     setSyncError(null);
+    setSyncWarnings([]);
     try {
       const source = await createSheetSyncSource(adminSession.token, {
         displayName: newSourceName.trim(),
@@ -482,6 +486,7 @@ export default function App() {
     setDeletingSourceId(source.id);
     setSyncMessage(null);
     setSyncError(null);
+    setSyncWarnings([]);
     try {
       await deleteSheetSyncSource(adminSession.token, source.id);
       await refreshAdminSettings(adminSession.token);
@@ -508,10 +513,12 @@ export default function App() {
     setSyncingSourceId(source.id);
     setSyncMessage(null);
     setSyncError(null);
+    setSyncWarnings([]);
     try {
       const result = await syncSheetSyncSource(adminSession.token, source.id);
       await refreshAdminSettings(adminSession.token);
       setSyncMessage(`${source.displayName} ${formatSyncResult(result)}`);
+      setSyncWarnings(result.warnings ?? []);
     } catch (err) {
       if (handleAdminUnauthorized(err)) {
         return;
@@ -546,9 +553,7 @@ export default function App() {
       setCurrentSearchName(normalized);
       setCurrentPage("results");
       setStandardFilter("ALL");
-      setStandardShippingFilter("ALL");
       setPreorderItemFilter("ALL");
-      setPreorderShippingFilter("ALL");
       setSelectedQuickOrderIds([]);
       setQuickOrderMessage(null);
     } catch (err) {
@@ -631,6 +636,7 @@ export default function App() {
           deletingSourceId={deletingSourceId}
           syncMessage={syncMessage}
           syncError={syncError}
+          syncWarnings={syncWarnings}
           onAutoSyncToggle={handleAutoSyncToggle}
           onNewSourceNameChange={setNewSourceName}
           onNewSourceUrlChange={setNewSourceUrl}
@@ -833,13 +839,6 @@ export default function App() {
                   </div>
                 </div>
 
-                <FilterMenu
-                  label="出貨進度"
-                  value={preorderShippingFilter}
-                  options={PREORDER_SHIPPING_FILTERS}
-                  onChange={(value) => setPreorderShippingFilter(value)}
-                />
-
                 {filteredPreorderOrders.length > 0 ? (
                   filteredPreorderOrders.map((order) => (
                     <OrderCard
@@ -886,13 +885,6 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-
-                <FilterMenu
-                  label="出貨進度"
-                  value={standardShippingFilter}
-                  options={PREORDER_SHIPPING_FILTERS}
-                  onChange={(value) => setStandardShippingFilter(value)}
-                />
 
                 {filteredStandardOrders.length > 0 ? (
                   filteredStandardOrders.map((order) => (
@@ -1044,6 +1036,7 @@ function AdminDashboardScreen({
   deletingSourceId,
   syncMessage,
   syncError,
+  syncWarnings,
   onAutoSyncToggle,
   onNewSourceNameChange,
   onNewSourceUrlChange,
@@ -1070,6 +1063,7 @@ function AdminDashboardScreen({
   deletingSourceId: number | null;
   syncMessage: string | null;
   syncError: string | null;
+  syncWarnings: AdminSyncWarning[];
   onAutoSyncToggle: () => void;
   onNewSourceNameChange: (value: string) => void;
   onNewSourceUrlChange: (value: string) => void;
@@ -1321,6 +1315,22 @@ function AdminDashboardScreen({
               </div>
             )}
 
+            {syncWarnings.length > 0 && (
+              <div className="mt-6 border-2 border-[#2C1E16] bg-[#FFF8E1] p-4 text-[#2C1E16] shadow-[3px_3px_0px_#2C1E16]">
+                <div className="mb-3 flex items-center gap-2 font-black text-[#BC4A3C]">
+                  <AlertCircle size={20} className="flex-shrink-0" />
+                  <span>表單問題通知</span>
+                </div>
+                <ul className="space-y-2 text-sm font-bold leading-relaxed">
+                  {syncWarnings.map((warning, index) => (
+                    <li key={`${warning.sheetName ?? "sheet"}-${warning.rowNumber ?? index}-${index}`}>
+                      {formatSyncWarning(warning)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {syncError && (
               <div className="mt-6 flex items-start gap-2 text-[#BC4A3C] bg-[#EBE3CC] p-3 border-2 border-[#2C1E16]">
                 <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
@@ -1340,75 +1350,6 @@ function EmptyState({ label }: { label: string }) {
       <Package size={48} className="mx-auto mb-4 text-[#D9A036] opacity-50" />
       <h3 className="text-xl font-black text-[#2C1E16] mb-2">查無相關狀態的訂單</h3>
       <p className="font-bold text-[#2A5C5B]">目前「{label}」分類下沒有任何紀錄喔！</p>
-    </div>
-  );
-}
-
-type ShippingFilterOption = {
-  key: ShippingStatusCode | "ALL";
-  label: string;
-};
-
-function FilterMenu({
-  label,
-  value,
-  options,
-  onChange
-}: {
-  label: string;
-  value: ShippingStatusCode | "ALL";
-  options: ShippingFilterOption[];
-  onChange: (value: ShippingStatusCode | "ALL") => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedLabel = options.find((option) => option.key === value)?.label ?? "全部";
-
-  return (
-    <div
-      className="relative mb-8 max-w-xs"
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget as Node | null;
-        if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
-          setIsOpen(false);
-        }
-      }}
-    >
-      <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
-        {label}
-      </label>
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between gap-3 border-2 border-[#2C1E16] bg-white px-4 py-2 font-black text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] transition-all hover:bg-[#F5F0E6] focus:outline-none"
-      >
-        <span>{selectedLabel}</span>
-        <ChevronDown
-          size={18}
-          className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {isOpen && (
-        <div className="absolute left-0 right-0 z-30 mt-2 flex flex-col gap-2 border-2 border-[#2C1E16] bg-[#EBE3CC] p-2 shadow-[4px_4px_0px_#2C1E16]">
-          {options.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              onClick={() => {
-                onChange(option.key);
-                setIsOpen(false);
-              }}
-              className={`px-4 py-2 text-left font-black border-2 border-[#2C1E16] transition-all ${
-                value === option.key
-                  ? "bg-[#BC4A3C] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[1px] translate-x-[1px]"
-                  : "bg-white text-[#2C1E16] shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[2px_2px_0px_#2C1E16]"
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

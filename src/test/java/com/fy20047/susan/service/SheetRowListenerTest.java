@@ -152,6 +152,63 @@ class SheetRowListenerTest {
     }
 
     @Test
+    void usesShippingProgressForReadyToShipStatus() {
+        List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> {
+            row.setPurchased("TRUE");
+            row.setCheckedIn("2026-07-01");
+            row.setShippingProgress("已抵台待出貨");
+        });
+
+        OrderItem item = savedItems.getFirst();
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.ARRIVED, item.getItemStatus());
+        Assertions.assertEquals(com.fy20047.susan.domain.ShippingStatus.READY_TO_SHIP, item.getShippingStatus());
+        Assertions.assertEquals(true, item.getDepositPaid());
+    }
+
+    @Test
+    void usesNotCheckedInColumnForReminder() {
+        List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> {
+            row.setCheckedIn("2026-07-01");
+            row.setNotCheckedIn("TRUE");
+        });
+
+        Assertions.assertEquals(true, savedItems.getFirst().getCheckedIn());
+    }
+
+    @Test
+    void warnsWhenDepositDateAndConfirmationArePartial() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        when(writer.createGroup(any())).thenReturn(1L);
+
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("場販測試團");
+
+        listener.invokeHeadMap(fieldSalesHeaderMap(), context);
+
+        SheetRowDto row = baseRow();
+        row.setPurchased("TRUE");
+        row.setCheckedIn("2026-07-01");
+        row.setShippingProgress("已抵台可出貨");
+
+        listener.invoke(row, context);
+
+        Assertions.assertEquals(2, listener.getWarnings().size());
+        Assertions.assertTrue(listener.getWarnings().stream()
+                .anyMatch(warning -> warning.message().contains("付定日與對只有其中一欄")));
+        Assertions.assertTrue(listener.getWarnings().stream()
+                .anyMatch(warning -> warning.message().contains("已抵台可出貨")));
+    }
+
+    @Test
     void skipsSheetWhenRequiredHeaderIsMissing() {
         SheetSyncWriter writer = mock(SheetSyncWriter.class);
         SheetRowListener listener = new SheetRowListener(writer, null, true, 100, 10, 64, 16);
@@ -300,6 +357,17 @@ class SheetRowListenerTest {
         return savedItems;
     }
 
+    private static SheetRowDto baseRow() {
+        SheetRowDto row = new SheetRowDto();
+        row.setBuyerNickname("Buyer");
+        row.setItemName("測試商品");
+        row.setDepositAmount(100);
+        row.setBalanceAmount(25);
+        row.setTotalAmount(125);
+        row.setQuantity(1);
+        return row;
+    }
+
     private static Map<Integer, String> fieldSalesHeaderMap() {
         Map<Integer, String> headers = new LinkedHashMap<>();
         headers.put(0, "尾款日");
@@ -326,6 +394,7 @@ class SheetRowListenerTest {
         headers.put(21, "出貨狀態");
         headers.put(22, "喊單日");
         headers.put(23, "備註");
+        headers.put(24, "出貨進度");
         return headers;
     }
 

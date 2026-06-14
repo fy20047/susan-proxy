@@ -16,6 +16,9 @@ public class SheetRowDto {
     @ExcelProperty("付定日")
     private String depositPaidDate;
 
+    @ExcelProperty("出貨進度")
+    private String shippingProgress;
+
     @ExcelProperty("對帳")
     private String reconciled;
 
@@ -33,6 +36,9 @@ public class SheetRowDto {
 
     @ExcelProperty("對")
     private String checkedIn;
+
+    @ExcelProperty("未報到")
+    private String notCheckedIn;
 
     @ExcelProperty("順位")
     private String orderSn;

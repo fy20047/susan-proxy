@@ -14,6 +14,16 @@ export type AdminSyncResult = {
   totalSources: number;
   syncedSources: number;
   failedSources: number;
+  warnings: AdminSyncWarning[];
+};
+
+export type AdminSyncWarning = {
+  source?: string;
+  sheetName?: string;
+  rowNumber?: number;
+  buyerNickname?: string;
+  itemName?: string;
+  message: string;
 };
 
 export type SheetSyncSourceType = "STANDARD" | "PREORDER";

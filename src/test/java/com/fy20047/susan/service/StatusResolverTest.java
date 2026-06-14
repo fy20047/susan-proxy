@@ -38,16 +38,70 @@ class StatusResolverTest {
 
     @Test
     void shouldUsePendingPurchaseWhenStandardItemHasNameButIsNotPurchased() {
-        ItemStatus status = StatusResolver.determineStandard("測試商品", false, "", false);
+        ItemStatus status = StatusResolver.determineStandard(
+                "測試商品",
+                false,
+                false,
+                ShippingStatus.NOT_ARRIVED);
 
         assertEquals(ItemStatus.PENDING_PURCHASE, status);
     }
 
     @Test
-    void shouldUseForwardingWhenStandardItemIsPurchasedAndDepositCompleted() {
-        ItemStatus status = StatusResolver.determineStandard("測試商品", true, "2026/07/01", true);
+    void shouldUsePendingPaymentWhenStandardItemIsPurchasedButDepositIsMissing() {
+        ItemStatus status = StatusResolver.determineStandard(
+                "測試商品",
+                true,
+                false,
+                ShippingStatus.NOT_ARRIVED);
+
+        assertEquals(ItemStatus.PENDING_DEPOSIT, status);
+    }
+
+    @Test
+    void shouldUseForwardingWhenStandardItemIsPurchasedAndDepositStarted() {
+        ItemStatus status = StatusResolver.determineStandard(
+                "測試商品",
+                true,
+                true,
+                ShippingStatus.NOT_ARRIVED);
 
         assertEquals(ItemStatus.IN_TRANSIT, status);
+    }
+
+    @Test
+    void shouldUseReadyToShipWhenStandardItemArrivedAfterDepositStarted() {
+        ItemStatus status = StatusResolver.determineStandard(
+                "測試商品",
+                true,
+                true,
+                ShippingStatus.READY_TO_SHIP);
+
+        assertEquals(ItemStatus.ARRIVED, status);
+    }
+
+    @Test
+    void shouldResolveStandardShippingProgressColumn() {
+        assertEquals(ShippingStatus.NOT_ARRIVED,
+                StatusResolver.determineStandardShipping("尚未抵台", true, false));
+        assertEquals(ShippingStatus.READY_TO_SHIP,
+                StatusResolver.determineStandardShipping("已抵台待出貨", false, false));
+        assertEquals(ShippingStatus.READY_TO_SHIP,
+                StatusResolver.determineStandardShipping("已抵台可出貨", false, false));
+        assertEquals(ShippingStatus.SHIPPED,
+                StatusResolver.determineStandardShipping("已出貨", false, false));
+    }
+
+    @Test
+    void shouldResolvePreorderVisibleStatesFromShippingProgress() {
+        assertEquals(ItemStatus.PREORDER_PURCHASED, StatusResolver.determinePreorder(
+                "測試商品", true, true, "已下單待發貨", "", false));
+        assertEquals(ItemStatus.PREORDER_FORWARDING, StatusResolver.determinePreorder(
+                "測試商品", true, true, "官方已發貨", "", false));
+        assertEquals(ItemStatus.PREORDER_ARRIVED, StatusResolver.determinePreorder(
+                "測試商品", true, true, "已抵台待出貨", "", false));
+        assertEquals(ItemStatus.PREORDER_SHIPPED, StatusResolver.determinePreorder(
+                "測試商品", true, true, "已出貨", "", false));
     }
 
     @Test

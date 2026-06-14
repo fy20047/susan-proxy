@@ -62,8 +62,10 @@ public class SheetSyncService {
     private static final String QUEUED_HEADER = resolveExcelHeader("queued");
     private static final String LEGACY_QUEUED_HEADER = resolveExcelHeader("legacyQueued");
     private static final String CHECKED_IN_HEADER = resolveExcelHeader("checkedIn");
+    private static final String NOT_CHECKED_IN_HEADER = resolveExcelHeader("notCheckedIn");
     private static final String BALANCE_DUE_DATE_HEADER = resolveExcelHeader("balanceDueDate");
     private static final String DEPOSIT_PAID_DATE_HEADER = resolveExcelHeader("depositPaidDate");
+    private static final String SHIPPING_PROGRESS_HEADER = resolveExcelHeader("shippingProgress");
     private static final String CHECK_MARK_HEADER = resolveExcelHeader("checkMark");
     private static final String DEPOSIT_AMOUNT_HEADER = resolveExcelHeader("depositAmount");
     private static final String BALANCE_AMOUNT_HEADER = resolveExcelHeader("balanceAmount");
@@ -209,6 +211,7 @@ public class SheetSyncService {
         boolean hasQueuedColumn = containsHeader(headerIndexMap, QUEUED_HEADER);
         boolean hasLegacyQueuedColumn = containsHeader(headerIndexMap, LEGACY_QUEUED_HEADER);
         boolean hasPreorderStatusColumn = containsHeader(headerIndexMap, PREORDER_STATUS_HEADER);
+        boolean hasNotCheckedInColumn = containsHeader(headerIndexMap, NOT_CHECKED_IN_HEADER);
         LocalDateTime syncTimestamp = LocalDateTime.now();
         Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
 
@@ -244,11 +247,13 @@ public class SheetSyncService {
             item.setOrderRank(getValue(record, headerIndexMap, ORDER_RANK_HEADER));
             item.setOrderSn(getValue(record, headerIndexMap, ORDER_SN_HEADER));
             item.setQueued(resolveQueued(record, headerIndexMap, hasQueuedColumn, hasLegacyQueuedColumn));
-            boolean isCheckedIn = parseBoolean(getValue(record, headerIndexMap, CHECKED_IN_HEADER));
-            item.setCheckedIn(isCheckedIn);
+            item.setCheckedIn(hasNotCheckedInColumn && parseBoolean(getValue(record, headerIndexMap, NOT_CHECKED_IN_HEADER)));
             item.setBalanceDueDate(getValue(record, headerIndexMap, BALANCE_DUE_DATE_HEADER));
             String depositPaidDate = getValue(record, headerIndexMap, DEPOSIT_PAID_DATE_HEADER);
+            String depositConfirmation = getValue(record, headerIndexMap, CHECKED_IN_HEADER);
+            boolean isDepositPaid = !isBlank(depositPaidDate) || !isBlank(depositConfirmation);
             item.setDepositPaidDate(depositPaidDate);
+            item.setDepositPaid(isDepositPaid);
             item.setDepositReconciled(parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER)));
             boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, PURCHASED_HEADER));
             item.setPurchased(isPurchased);
@@ -267,15 +272,22 @@ public class SheetSyncService {
             if (hasPreorderStatusColumn) {
                 boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
                 String preorderStatus = getValue(record, headerIndexMap, PREORDER_STATUS_HEADER);
+                String shippingProgress = getValue(record, headerIndexMap, SHIPPING_PROGRESS_HEADER);
                 item.setItemStatus(StatusResolver.determinePreorder(
+                        itemName,
+                        isPurchased,
+                        isDepositPaid,
+                        shippingProgress,
                         preorderStatus,
                         isShipped));
-                item.setShippingStatus(StatusResolver.determinePreorderShipping(preorderStatus, isShipped));
+                item.setShippingStatus(StatusResolver.determinePreorderShipping(shippingProgress, preorderStatus, isShipped));
             } else {
                 boolean isArrived = parseBoolean(getValue(record, headerIndexMap, ARRIVED_HEADER));
                 boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
-                item.setItemStatus(StatusResolver.determineStandard(itemName, isPurchased, depositPaidDate, isCheckedIn));
-                item.setShippingStatus(StatusResolver.determineShipping(isArrived, isShipped));
+                String shippingProgress = getValue(record, headerIndexMap, SHIPPING_PROGRESS_HEADER);
+                var shippingStatus = StatusResolver.determineStandardShipping(shippingProgress, isArrived, isShipped);
+                item.setItemStatus(StatusResolver.determineStandard(itemName, isPurchased, isDepositPaid, shippingStatus));
+                item.setShippingStatus(shippingStatus);
             }
 
             group.addItem(item);
@@ -302,33 +314,34 @@ public class SheetSyncService {
 
     public SyncRunResult syncGoogleSheetSource(Long sourceId) {
         if (sourceId == null || sheetSyncSourceRepository == null) {
-            return new SyncRunResult(SyncRunStatus.SOURCE_NOT_FOUND, null, 0, 0, 0);
+            return emptySyncRunResult(SyncRunStatus.SOURCE_NOT_FOUND, 0);
         }
         ensureDefaultSourcesInitialized();
         return sheetSyncSourceRepository.findById(sourceId)
                 .map(source -> syncSources(List.of(toSyncSource(source))))
-                .orElseGet(() -> new SyncRunResult(SyncRunStatus.SOURCE_NOT_FOUND, null, 0, 0, 0));
+                .orElseGet(() -> emptySyncRunResult(SyncRunStatus.SOURCE_NOT_FOUND, 0));
     }
 
     private SyncRunResult syncSources(List<SyncSource> sources) {
         if (sources.isEmpty()) {
-            return new SyncRunResult(SyncRunStatus.NO_SOURCES, null, 0, 0, 0);
+            return emptySyncRunResult(SyncRunStatus.NO_SOURCES, 0);
         }
         if (!syncInProgress.compareAndSet(false, true)) {
             log.warn("Sheet sync is already running.");
-            return new SyncRunResult(SyncRunStatus.ALREADY_RUNNING, null, sources.size(), 0, 0);
+            return emptySyncRunResult(SyncRunStatus.ALREADY_RUNNING, sources.size());
         }
 
         LocalDateTime syncTimestamp = LocalDateTime.now();
         int successCount = 0;
         int failureCount = 0;
         Exception firstFailure = null;
+        List<SyncWarning> warnings = new ArrayList<>();
         List<String> successfulSourceKeys = new ArrayList<>();
         List<Long> successfulSourceIds = new ArrayList<>();
         try {
             for (SyncSource source : sources) {
                 try {
-                    syncSource(source, syncTimestamp);
+                    warnings.addAll(syncSource(source, syncTimestamp));
                     successCount += 1;
                     successfulSourceKeys.add(source.sourceKey());
                     if (source.id() != null) {
@@ -362,7 +375,8 @@ public class SheetSyncService {
                     completedAt,
                     sources.size(),
                     successCount,
-                    failureCount);
+                    failureCount,
+                    warnings);
         } finally {
             syncInProgress.set(false);
         }
@@ -392,7 +406,7 @@ public class SheetSyncService {
         return 1;
     }
 
-    private void syncSource(SyncSource source, LocalDateTime syncTimestamp) {
+    private List<SyncWarning> syncSource(SyncSource source, LocalDateTime syncTimestamp) {
         byte[] excelBytes = readExcelBytes(source.url());
         if (logSheetNamesEnabled) {
             logSheetNames(excelBytes);
@@ -422,6 +436,7 @@ public class SheetSyncService {
                     deleteGroupsNotIn(source.sourceKey(), visibleSheets);
                 }
             }
+            return listener.getWarnings();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read workbook stream for source " + source.sourceKey(), e);
         }
@@ -792,6 +807,10 @@ public class SheetSyncService {
     private record SyncSource(Long id, String sourceKey, String url, GroupSourceType defaultSourceType) {
     }
 
+    private SyncRunResult emptySyncRunResult(SyncRunStatus status, int totalSources) {
+        return new SyncRunResult(status, null, totalSources, 0, 0, List.of());
+    }
+
     public enum SyncRunStatus {
         SYNCED,
         NO_SOURCES,
@@ -804,7 +823,18 @@ public class SheetSyncService {
             LocalDateTime syncedAt,
             int totalSources,
             int syncedSources,
-            int failedSources
+            int failedSources,
+            List<SyncWarning> warnings
+    ) {
+    }
+
+    public record SyncWarning(
+            String source,
+            String sheetName,
+            int rowNumber,
+            String buyerNickname,
+            String itemName,
+            String message
     ) {
     }
 }

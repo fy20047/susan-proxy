@@ -1,6 +1,7 @@
 package com.fy20047.susan.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record AdminSyncResponse(
         String status,
@@ -8,6 +9,7 @@ public record AdminSyncResponse(
         LocalDateTime syncedAt,
         int totalSources,
         int syncedSources,
-        int failedSources
+        int failedSources,
+        List<AdminSyncWarningDto> warnings
 ) {
 }

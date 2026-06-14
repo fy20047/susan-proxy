@@ -38,6 +38,10 @@ class SheetSyncServiceTest {
     private static final String QUEUED = "\u662f\u5426\u6392\u5230";
     private static final String LEGACY_QUEUED = "\u5df2\u6392\u5230";
     private static final String PURCHASED = "\u5df2\u63a1\u8cfc";
+    private static final String DEPOSIT_PAID_DATE = "\u4ed8\u5b9a\u65e5";
+    private static final String CHECKED_IN = "\u5c0d";
+    private static final String SHIPPING_PROGRESS = "\u51fa\u8ca8\u9032\u5ea6";
+    private static final String NOT_CHECKED_IN = "\u672a\u5831\u5230";
 
     @TempDir
     Path tempDir;
@@ -82,6 +86,36 @@ class SheetSyncServiceTest {
         OrderItem item = syncSingleItem(List.of(PURCHASED), List.of("TRUE"));
 
         Assertions.assertEquals(true, item.getPurchased());
+    }
+
+    @Test
+    void syncFromCsvUsesShippingProgressForReadyToShipStatus() throws IOException {
+        OrderItem item = syncSingleItem(
+                List.of(PURCHASED, CHECKED_IN, SHIPPING_PROGRESS),
+                List.of("TRUE", "2026-07-01", "\u5df2\u62b5\u53f0\u5f85\u51fa\u8ca8"));
+
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.ARRIVED, item.getItemStatus());
+        Assertions.assertEquals(com.fy20047.susan.domain.ShippingStatus.READY_TO_SHIP, item.getShippingStatus());
+        Assertions.assertEquals(true, item.getDepositPaid());
+    }
+
+    @Test
+    void syncFromCsvTreatsEitherDepositFieldAsPaid() throws IOException {
+        OrderItem item = syncSingleItem(
+                List.of(PURCHASED, CHECKED_IN),
+                List.of("TRUE", "2026-07-01"));
+
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.IN_TRANSIT, item.getItemStatus());
+        Assertions.assertEquals(true, item.getDepositPaid());
+    }
+
+    @Test
+    void syncFromCsvUsesNotCheckedInForReminder() throws IOException {
+        OrderItem item = syncSingleItem(
+                List.of(DEPOSIT_PAID_DATE, CHECKED_IN, NOT_CHECKED_IN),
+                List.of("", "2026-07-01", "TRUE"));
+
+        Assertions.assertEquals(true, item.getCheckedIn());
     }
 
     @Test

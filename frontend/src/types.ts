@@ -41,27 +41,25 @@ export type ItemStatusCode = StandardItemStatusCode | PreorderItemStatusCode;
 export type ShippingStatusCode = "NOT_ARRIVED" | "READY_TO_SHIP" | "SHIPPED";
 
 export type StandardOrderStatus =
-  | "已登記"
-  | "待匯定"
-  | "待購入"
+  | "尚未購入"
+  | "待付款"
   | "轉送中"
-  | "已抵台待出貨"
+  | "可出貨"
   | "已出貨";
 
 export type PreorderItemStatusLabel =
-  | "已登記"
-  | "待購入"
-  | "待匯定"
-  | "已購入"
+  | "尚未購入"
+  | "待付款"
+  | "等待官方出貨"
   | "轉送中"
-  | "已抵台"
+  | "可出貨"
   | "已出貨";
 
-export type ShippingStatusLabel = "未抵台" | "已抵台待出貨" | "已出貨";
+export type ShippingStatusLabel = "尚未抵台" | "已抵台待出貨" | "已出貨";
 
 export type ItemStatusLabel = StandardOrderStatus | PreorderItemStatusLabel;
-export type SummaryStatusCode = StandardItemStatusCode | ShippingStatusCode;
-export type SummaryStatusLabel = StandardOrderStatus | ShippingStatusLabel;
+export type SummaryStatusCode = ItemStatusCode | ShippingStatusCode;
+export type SummaryStatusLabel = ItemStatusLabel | ShippingStatusLabel;
 
 export type ApiOrderItem = {
   id: number;
@@ -71,6 +69,7 @@ export type ApiOrderItem = {
   checkedIn?: boolean;
   balanceDueDate?: string;
   depositPaidDate?: string;
+  depositPaid?: boolean;
   depositReconciled?: boolean;
   purchased?: boolean;
   checkMark?: string;

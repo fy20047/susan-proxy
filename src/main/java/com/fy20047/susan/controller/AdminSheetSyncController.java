@@ -2,6 +2,7 @@ package com.fy20047.susan.controller;
 
 import com.fy20047.susan.domain.SheetSyncSource;
 import com.fy20047.susan.dto.AdminSyncResponse;
+import com.fy20047.susan.dto.AdminSyncWarningDto;
 import com.fy20047.susan.dto.ApiResponse;
 import com.fy20047.susan.dto.CreateSheetSyncSourceRequest;
 import com.fy20047.susan.dto.SheetSyncSettingsResponse;
@@ -152,7 +153,16 @@ public class AdminSheetSyncController {
                 result.syncedAt(),
                 result.totalSources(),
                 result.syncedSources(),
-                result.failedSources());
+                result.failedSources(),
+                result.warnings().stream()
+                        .map(warning -> new AdminSyncWarningDto(
+                                warning.source(),
+                                warning.sheetName(),
+                                warning.rowNumber(),
+                                warning.buyerNickname(),
+                                warning.itemName(),
+                                warning.message()))
+                        .toList());
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

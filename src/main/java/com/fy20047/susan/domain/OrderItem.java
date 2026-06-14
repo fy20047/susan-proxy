@@ -48,7 +48,7 @@ public class OrderItem {
     @Column(name = "order_rank", length = 64)
     private String orderRank;
 
-    // 是否報到（勾選代表已報到）
+    // 未報到提醒（新版表單的「未報到」欄）
     @Column(name = "is_checked_in")
     private Boolean checkedIn = false;
 
@@ -63,6 +63,9 @@ public class OrderItem {
     // 付定日（CSV 可能不是純日期，先以字串保存）
     @Column(name = "deposit_paid_date", length = 32)
     private String depositPaidDate;
+
+    @Column(name = "deposit_paid")
+    private Boolean depositPaid = false;
 
     // 對帳（勾選代表訂金已核對）
     @Column(name = "deposit_reconciled")

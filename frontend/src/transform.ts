@@ -1,6 +1,6 @@
 import { ApiOrderGroup, OrderItemView, OrderView, SourceType } from "./types";
 import {
-  derivePreorderShippingStatusCode,
+  derivePreorderOrderStatusCode,
   deriveStandardOrderStatusCode,
   toItemStatusLabel,
   toShippingStatusCode,
@@ -20,7 +20,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     const rawBalanceDueDate = item.balanceDueDate ?? "";
     const normalizedBalanceDueDate = rawBalanceDueDate.trim();
     const isCheckedIn = item.checkedIn ?? false;
-    const isDepositPaid = normalizedDepositPaidDate.length > 0;
+    const isDepositPaid = item.depositPaid ?? normalizedDepositPaidDate.length > 0;
 
     return {
       id: item.id,
@@ -53,8 +53,8 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     sourceKey: group.sourceKey,
     groupName: group.groupName ?? "未命名團",
     buyerNickname: group.buyerNickname,
-    summaryStatusCode: sourceType === "PREORDER" ? "NOT_ARRIVED" : "REGISTERED",
-    summaryStatus: sourceType === "PREORDER" ? "未抵台" : "已登記",
+    summaryStatusCode: sourceType === "PREORDER" ? "PREORDER_REGISTERED" : "REGISTERED",
+    summaryStatus: "尚未購入",
     bonusCount: group.bonusCount ?? 0,
     items,
     totalAmount: 0,
@@ -85,10 +85,10 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
   );
   const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
   const isBalancePaid =
-    order.items.length > 0 && order.items.every((item) => item.isBalancePaid);
+    items.length > 0 && items.every((item) => item.isBalancePaid);
 
   if (order.sourceType === "PREORDER") {
-    const summaryStatusCode = derivePreorderShippingStatusCode(items);
+    const summaryStatusCode = derivePreorderOrderStatusCode(items);
     return {
       ...order,
       items,
@@ -100,7 +100,7 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
       balanceAmount,
       isBalancePaid,
       summaryStatusCode,
-      summaryStatus: toShippingStatusLabel(summaryStatusCode)
+      summaryStatus: toItemStatusLabel(summaryStatusCode)
     };
   }
 

@@ -50,6 +50,8 @@ import icon from "./image/icon.png";
 
 const SELLER_STORE_URL = "https://myship.7-11.com.tw/general/detail/GM2602284842246";
 const ADMIN_SESSION_STORAGE_KEY = "susan-admin-session";
+const QUICK_ORDER_BAR_ANIMATION_MS = 320;
+const QUICK_ORDER_BAR_ENTER_DELAY_MS = 40;
 
 type AppPage = "search" | "results" | "admin-login" | "admin-dashboard";
 
@@ -157,6 +159,8 @@ export default function App() {
   const [pageViews, setPageViews] = useState<PageViewStats | null>(null);
   const [selectedQuickOrderIds, setSelectedQuickOrderIds] = useState<number[]>([]);
   const [quickOrderMessage, setQuickOrderMessage] = useState<string | null>(null);
+  const [isQuickOrderBarMounted, setIsQuickOrderBarMounted] = useState(false);
+  const [isQuickOrderBarVisible, setIsQuickOrderBarVisible] = useState(false);
 
   useEffect(() => {
     recordPageView()
@@ -269,12 +273,36 @@ export default function App() {
     [selectedQuickOrders]
   );
   const hasCheckedQuickOrder = selectedQuickOrderIds.length > 0;
-  const showQuickOrderPanel = hasCheckedQuickOrder && selectedQuickOrders.length > 0;
+  const showQuickOrderPanel =
+    currentPage === "results" && hasCheckedQuickOrder && selectedQuickOrders.length > 0;
 
   useEffect(() => {
     const selectableIds = new Set(quickOrderEligibleOrders.map((order) => order.id));
     setSelectedQuickOrderIds((prev) => prev.filter((id) => selectableIds.has(id)));
   }, [quickOrderEligibleOrders]);
+
+  useEffect(() => {
+    let timeoutId: number | null = null;
+
+    if (showQuickOrderPanel) {
+      setIsQuickOrderBarVisible(false);
+      setIsQuickOrderBarMounted(true);
+      timeoutId = window.setTimeout(() => {
+        setIsQuickOrderBarVisible(true);
+      }, QUICK_ORDER_BAR_ENTER_DELAY_MS);
+    } else {
+      setIsQuickOrderBarVisible(false);
+      timeoutId = window.setTimeout(() => {
+        setIsQuickOrderBarMounted(false);
+      }, QUICK_ORDER_BAR_ANIMATION_MS);
+    }
+
+    return () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [showQuickOrderPanel]);
 
   const lastUpdatedLabel = useMemo(() => {
     const timestamps = orders
@@ -731,7 +759,11 @@ export default function App() {
 
       {currentPage === "results" && (
         <div className="flex-1">
-          <div className="max-w-4xl mx-auto p-4 md:p-8 pt-8">
+          <div
+            className={`max-w-4xl mx-auto px-4 pt-8 md:px-8 md:pt-8 ${
+              isQuickOrderBarMounted ? "pb-64 md:pb-40" : "pb-4 md:pb-8"
+            }`}
+          >
             <div className="flex flex-row justify-between items-end mb-8 border-b-4 border-[#2C1E16] pb-4 relative w-full">
               <button
                 onClick={() => setCurrentPage("search")}
@@ -767,47 +799,6 @@ export default function App() {
                 </p>
               </div>
             )}
-
-                {showQuickOrderPanel && (
-                  <div className="mb-6 bg-white border-4 border-[#2C1E16] p-4 md:p-5 shadow-[4px_4px_0px_#2C1E16]">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div className="space-y-1">
-                        <p className="text-lg font-black text-[#2C1E16]">快速下單</p>
-                        <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
-                          已選 {selectedQuickOrders.length} 筆，可出貨尾款合計 NT$ {selectedQuickOrderBalance.toLocaleString()}
-                        </p>
-                        <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
-                          勾選要一起出貨的團名後，可直接複製明細並前往賣貨便賣場。
-                        </p>
-                        {quickOrderMessage && (
-                          <p className="text-sm font-bold text-[#BC4A3C]">{quickOrderMessage}</p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                        <button
-                          type="button"
-                          onClick={handleCopyQuickOrderDetails}
-                          disabled={!selectedQuickOrders.length}
-                          className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                        >
-                          <Copy size={18} />
-                          <span>複製明細</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleQuickOrderSubmit}
-                          disabled={!selectedQuickOrders.length}
-                          className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                        >
-                          <ExternalLink size={18} />
-                          <span>下單</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
 
             {preorderOrders.length > 0 && (
               <section className="mb-12">
@@ -902,6 +893,55 @@ export default function App() {
                 )}
               </section>
             )}
+          </div>
+        </div>
+      )}
+
+      {isQuickOrderBarMounted && (
+        <div
+          className={`fixed inset-x-0 bottom-0 z-50 px-0 pb-0 transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none md:px-3 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))] ${
+            isQuickOrderBarVisible
+              ? "translate-y-0 opacity-100"
+              : "translate-y-[110%] opacity-0 pointer-events-none"
+          }`}
+        >
+          <div className="relative mx-auto max-w-4xl bg-[#F5F0E6] border-4 border-[#2C1E16] p-5 md:bg-white md:p-5 shadow-[4px_4px_0px_#2C1E16]">
+            <div className="absolute inset-x-0 top-0 h-3 bg-[#D9A036] md:hidden" />
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <p className="text-lg font-black text-[#2C1E16]">快速下單</p>
+                <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
+                  已選 {selectedQuickOrders.length} 筆，可出貨尾款合計 NT$ {selectedQuickOrderBalance.toLocaleString()}
+                </p>
+                <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
+                  勾選要一起出貨的團名後，可直接複製明細並前往賣貨便賣場。
+                </p>
+                {quickOrderMessage && (
+                  <p className="text-sm font-bold text-[#BC4A3C]">{quickOrderMessage}</p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={handleCopyQuickOrderDetails}
+                  disabled={!selectedQuickOrders.length}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                >
+                  <Copy size={18} />
+                  <span>複製明細</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickOrderSubmit}
+                  disabled={!selectedQuickOrders.length}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                >
+                  <ExternalLink size={18} />
+                  <span>下單</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

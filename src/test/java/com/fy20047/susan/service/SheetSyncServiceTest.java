@@ -1,19 +1,27 @@
 package com.fy20047.susan.service;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fy20047.susan.domain.GroupSourceType;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
+import com.fy20047.susan.domain.SheetSyncSettings;
+import com.fy20047.susan.domain.SheetSyncSource;
 import com.fy20047.susan.repository.OrderGroupRepository;
+import com.fy20047.susan.repository.SheetSyncSettingsRepository;
+import com.fy20047.susan.repository.SheetSyncSourceRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -76,6 +84,36 @@ class SheetSyncServiceTest {
         Assertions.assertEquals(true, item.getPurchased());
     }
 
+    @Test
+    void createSyncSourceConvertsGoogleSheetEditUrlToXlsxExportUrl() {
+        SheetSyncService service = syncServiceWithSourceRepositories();
+        String sheetId = "1o6WQVtsjajFf2Z0mCOJKlZhOO4GfKR0y5aZhYmkucss";
+
+        SheetSyncSource source = service.createSyncSource(
+                "一般團",
+                "https://docs.google.com/spreadsheets/d/" + sheetId + "/edit?gid=0#gid=0",
+                GroupSourceType.STANDARD);
+
+        Assertions.assertEquals(
+                "https://docs.google.com/spreadsheets/d/" + sheetId + "/export?format=xlsx",
+                source.getSheetUrl());
+    }
+
+    @Test
+    void createSyncSourceExtractsGoogleSheetUrlFromMarkdownLink() {
+        SheetSyncService service = syncServiceWithSourceRepositories();
+        String sheetId = "1o6WQVtsjajFf2Z0mCOJKlZhOO4GfKR0y5aZhYmkucss";
+
+        SheetSyncSource source = service.createSyncSource(
+                "一般團",
+                "[表單](https://docs.google.com/spreadsheets/d/" + sheetId + "/export?format=xlsx)",
+                GroupSourceType.STANDARD);
+
+        Assertions.assertEquals(
+                "https://docs.google.com/spreadsheets/d/" + sheetId + "/export?format=xlsx",
+                source.getSheetUrl());
+    }
+
     private OrderItem syncSingleItem(List<String> extraHeaders, List<String> extraValues) throws IOException {
         OrderGroupRepository repository = mock(OrderGroupRepository.class);
         when(repository.findByGroupNameAndSourceKeyIncludingLegacy(anyString(), anyString())).thenReturn(List.of());
@@ -95,6 +133,27 @@ class SheetSyncServiceTest {
         Assertions.assertEquals("Test Group", group.getGroupName());
         Assertions.assertEquals(1, group.getItems().size());
         return group.getItems().getFirst();
+    }
+
+    private SheetSyncService syncServiceWithSourceRepositories() {
+        OrderGroupRepository orderGroupRepository = mock(OrderGroupRepository.class);
+        SheetSyncSourceRepository sourceRepository = mock(SheetSyncSourceRepository.class);
+        SheetSyncSettingsRepository settingsRepository = mock(SheetSyncSettingsRepository.class);
+        SheetSyncSettings settings = new SheetSyncSettings();
+        settings.setDefaultSourcesInitialized(true);
+
+        when(settingsRepository.findById(SheetSyncSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+        when(sourceRepository.findMaxDisplayOrder()).thenReturn(0);
+        when(sourceRepository.existsBySourceKey(anyString())).thenReturn(false);
+        doAnswer(invocation -> invocation.getArgument(0))
+                .when(sourceRepository)
+                .save(any(SheetSyncSource.class));
+
+        return new SheetSyncService(
+                orderGroupRepository,
+                mock(SheetSyncWriter.class),
+                sourceRepository,
+                settingsRepository);
     }
 
     private String buildCsv(List<String> extraHeaders, List<String> extraValues) {

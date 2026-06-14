@@ -10,14 +10,23 @@ import {
   LogIn,
   LogOut,
   Package,
+  Plus,
   RefreshCw,
-  Search
+  Search,
+  Trash2
 } from "lucide-react";
 import {
   AdminApiError,
   AdminSession,
+  SheetSyncSource,
+  SheetSyncSourceType,
+  createSheetSyncSource,
   createAdminSession,
   deleteAdminSession,
+  deleteSheetSyncSource,
+  fetchSheetSyncSettings,
+  syncSheetSyncSource,
+  updateAutoSync,
   syncGoogleSheet
 } from "./api/admin";
 import { fetchOrders } from "./api/orders";
@@ -87,6 +96,23 @@ function formatDateTime(value: string): string {
   return date.toLocaleString("zh-TW", { hour12: false });
 }
 
+function formatSyncResult(result: {
+  syncedAt: string;
+  totalSources: number;
+  syncedSources: number;
+  failedSources: number;
+}): string {
+  const syncedAt = formatDateTime(result.syncedAt);
+  if (result.failedSources > 0) {
+    return `部分同步完成：${result.syncedSources}/${result.totalSources} 份成功，${result.failedSources} 份失敗。${syncedAt}`;
+  }
+  return `同步完成：${result.syncedSources}/${result.totalSources} 份表單。${syncedAt}`;
+}
+
+function toSourceTypeLabel(sourceType: SheetSyncSourceType): string {
+  return sourceType === "PREORDER" ? "受注團" : "一般團";
+}
+
 export default function App() {
   const [adminSession, setAdminSession] = useState<AdminSession | null>(() => loadStoredAdminSession());
   const [currentPage, setCurrentPage] = useState<AppPage>(() => {
@@ -105,6 +131,16 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [isAdminSettingsLoading, setIsAdminSettingsLoading] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [sheetSources, setSheetSources] = useState<SheetSyncSource[]>([]);
+  const [isAutoSyncSaving, setIsAutoSyncSaving] = useState(false);
+  const [newSourceName, setNewSourceName] = useState("");
+  const [newSourceUrl, setNewSourceUrl] = useState("");
+  const [newSourceType, setNewSourceType] = useState<SheetSyncSourceType>("STANDARD");
+  const [isAddingSource, setIsAddingSource] = useState(false);
+  const [syncingSourceId, setSyncingSourceId] = useState<number | null>(null);
+  const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [standardFilter, setStandardFilter] = useState<StandardItemStatusCode | "ALL">("ALL");
   const [standardShippingFilter, setStandardShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
@@ -120,6 +156,47 @@ export default function App() {
       .then((stats) => setPageViews(stats))
       .catch(() => setPageViews(null));
   }, []);
+
+  useEffect(() => {
+    if (currentPage !== "admin-dashboard" || !adminSession) {
+      return;
+    }
+
+    let isActive = true;
+    setIsAdminSettingsLoading(true);
+    fetchSheetSyncSettings(adminSession.token)
+      .then((settings) => {
+        if (!isActive) {
+          return;
+        }
+        setAutoSyncEnabled(settings.autoSyncEnabled);
+        setSheetSources(settings.sources);
+      })
+      .catch((err) => {
+        if (!isActive) {
+          return;
+        }
+        if (err instanceof AdminApiError && err.status === 401) {
+          clearStoredAdminSession();
+          setAdminSession(null);
+          setCurrentPage("admin-login");
+          setAdminLoginError("登入已逾時，請重新登入。");
+          return;
+        }
+        const message =
+          err instanceof Error ? err.message : "讀取後台設定失敗，請稍後再試。";
+        setSyncError(message);
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsAdminSettingsLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentPage, adminSession]);
 
   const preorderOrders = useMemo(
     () => orders.filter((order) => order.sourceType === "PREORDER"),
@@ -225,6 +302,24 @@ export default function App() {
         ? "全部"
         : toStandardOrderStatusLabel(standardFilter);
 
+  const handleAdminUnauthorized = (err: unknown): boolean => {
+    if (err instanceof AdminApiError && err.status === 401) {
+      clearStoredAdminSession();
+      setAdminSession(null);
+      setCurrentPage("admin-login");
+      setAdminLoginError("登入已逾時，請重新登入。");
+      return true;
+    }
+    return false;
+  };
+
+  const refreshAdminSettings = async (token: string) => {
+    const settings = await fetchSheetSyncSettings(token);
+    setAutoSyncEnabled(settings.autoSyncEnabled);
+    setSheetSources(settings.sources);
+    return settings;
+  };
+
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const normalizedUsername = adminUsername.trim();
@@ -270,6 +365,11 @@ export default function App() {
     setAdminLoginError(null);
     setSyncMessage(null);
     setSyncError(null);
+    setAutoSyncEnabled(false);
+    setSheetSources([]);
+    setNewSourceName("");
+    setNewSourceUrl("");
+    setNewSourceType("STANDARD");
     setCurrentPage("admin-login");
     window.history.replaceState(null, "", "/admin");
   };
@@ -286,13 +386,10 @@ export default function App() {
     setSyncError(null);
     try {
       const result = await syncGoogleSheet(adminSession.token);
-      setSyncMessage(`同步完成：${formatDateTime(result.syncedAt)}`);
+      setSyncMessage(formatSyncResult(result));
+      await refreshAdminSettings(adminSession.token);
     } catch (err) {
-      if (err instanceof AdminApiError && err.status === 401) {
-        clearStoredAdminSession();
-        setAdminSession(null);
-        setCurrentPage("admin-login");
-        setAdminLoginError("登入已逾時，請重新登入。");
+      if (handleAdminUnauthorized(err)) {
         return;
       }
 
@@ -301,6 +398,129 @@ export default function App() {
       setSyncError(message);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleAutoSyncToggle = async () => {
+    if (!adminSession) {
+      clearStoredAdminSession();
+      setCurrentPage("admin-login");
+      return;
+    }
+
+    setIsAutoSyncSaving(true);
+    setSyncMessage(null);
+    setSyncError(null);
+    try {
+      const settings = await updateAutoSync(adminSession.token, !autoSyncEnabled);
+      setAutoSyncEnabled(settings.autoSyncEnabled);
+      setSheetSources(settings.sources);
+      setSyncMessage(settings.autoSyncEnabled ? "已開啟每 10 分鐘自動同步。" : "已關閉自動同步，改為手動更新。");
+    } catch (err) {
+      if (handleAdminUnauthorized(err)) {
+        return;
+      }
+      const message =
+        err instanceof Error ? err.message : "更新自動同步設定失敗，請稍後再試。";
+      setSyncError(message);
+    } finally {
+      setIsAutoSyncSaving(false);
+    }
+  };
+
+  const handleAddSheetSource = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminSession) {
+      clearStoredAdminSession();
+      setCurrentPage("admin-login");
+      return;
+    }
+
+    const normalizedUrl = newSourceUrl.trim();
+    if (!normalizedUrl) {
+      setSyncError("請輸入 Google Sheet 表單連結。");
+      return;
+    }
+
+    setIsAddingSource(true);
+    setSyncMessage(null);
+    setSyncError(null);
+    try {
+      const source = await createSheetSyncSource(adminSession.token, {
+        displayName: newSourceName.trim(),
+        sheetUrl: normalizedUrl,
+        defaultSourceType: newSourceType
+      });
+      setNewSourceName("");
+      setNewSourceUrl("");
+      setNewSourceType("STANDARD");
+      await refreshAdminSettings(adminSession.token);
+      setSyncMessage(`已新增表單連結：${source.displayName}`);
+    } catch (err) {
+      if (handleAdminUnauthorized(err)) {
+        return;
+      }
+      const message =
+        err instanceof Error ? err.message : "新增表單連結失敗，請稍後再試。";
+      setSyncError(message);
+    } finally {
+      setIsAddingSource(false);
+    }
+  };
+
+  const handleDeleteSheetSource = async (source: SheetSyncSource) => {
+    if (!adminSession) {
+      clearStoredAdminSession();
+      setCurrentPage("admin-login");
+      return;
+    }
+
+    if (!window.confirm(`確定要刪除「${source.displayName}」這個表單連結嗎？`)) {
+      return;
+    }
+
+    setDeletingSourceId(source.id);
+    setSyncMessage(null);
+    setSyncError(null);
+    try {
+      await deleteSheetSyncSource(adminSession.token, source.id);
+      await refreshAdminSettings(adminSession.token);
+      setSyncMessage(`已刪除表單連結：${source.displayName}`);
+    } catch (err) {
+      if (handleAdminUnauthorized(err)) {
+        return;
+      }
+      const message =
+        err instanceof Error ? err.message : "刪除表單連結失敗，請稍後再試。";
+      setSyncError(message);
+    } finally {
+      setDeletingSourceId(null);
+    }
+  };
+
+  const handleSyncSheetSource = async (source: SheetSyncSource) => {
+    if (!adminSession) {
+      clearStoredAdminSession();
+      setCurrentPage("admin-login");
+      return;
+    }
+
+    setSyncingSourceId(source.id);
+    setSyncMessage(null);
+    setSyncError(null);
+    try {
+      const result = await syncSheetSyncSource(adminSession.token, source.id);
+      await refreshAdminSettings(adminSession.token);
+      setSyncMessage(`${source.displayName} ${formatSyncResult(result)}`);
+    } catch (err) {
+      if (handleAdminUnauthorized(err)) {
+        return;
+      }
+      const message =
+        err instanceof Error ? err.message : "同步表單失敗，請稍後再試。";
+      setSyncError(message);
+    } finally {
+      setSyncingSourceId(null);
     }
   };
 
@@ -399,8 +619,25 @@ export default function App() {
           username={adminUsername || "管理員"}
           expiresAt={adminSession?.expiresAt}
           isSyncing={isSyncing}
+          isSettingsLoading={isAdminSettingsLoading}
+          autoSyncEnabled={autoSyncEnabled}
+          isAutoSyncSaving={isAutoSyncSaving}
+          sources={sheetSources}
+          newSourceName={newSourceName}
+          newSourceUrl={newSourceUrl}
+          newSourceType={newSourceType}
+          isAddingSource={isAddingSource}
+          syncingSourceId={syncingSourceId}
+          deletingSourceId={deletingSourceId}
           syncMessage={syncMessage}
           syncError={syncError}
+          onAutoSyncToggle={handleAutoSyncToggle}
+          onNewSourceNameChange={setNewSourceName}
+          onNewSourceUrlChange={setNewSourceUrl}
+          onNewSourceTypeChange={setNewSourceType}
+          onAddSource={handleAddSheetSource}
+          onDeleteSource={handleDeleteSheetSource}
+          onSyncSource={handleSyncSheetSource}
           onSync={handleAdminSync}
           onLogout={handleAdminLogout}
           onBackToSearch={handleBackToSearch}
@@ -795,8 +1032,25 @@ function AdminDashboardScreen({
   username,
   expiresAt,
   isSyncing,
+  isSettingsLoading,
+  autoSyncEnabled,
+  isAutoSyncSaving,
+  sources,
+  newSourceName,
+  newSourceUrl,
+  newSourceType,
+  isAddingSource,
+  syncingSourceId,
+  deletingSourceId,
   syncMessage,
   syncError,
+  onAutoSyncToggle,
+  onNewSourceNameChange,
+  onNewSourceUrlChange,
+  onNewSourceTypeChange,
+  onAddSource,
+  onDeleteSource,
+  onSyncSource,
   onSync,
   onLogout,
   onBackToSearch
@@ -804,15 +1058,32 @@ function AdminDashboardScreen({
   username: string;
   expiresAt?: string;
   isSyncing: boolean;
+  isSettingsLoading: boolean;
+  autoSyncEnabled: boolean;
+  isAutoSyncSaving: boolean;
+  sources: SheetSyncSource[];
+  newSourceName: string;
+  newSourceUrl: string;
+  newSourceType: SheetSyncSourceType;
+  isAddingSource: boolean;
+  syncingSourceId: number | null;
+  deletingSourceId: number | null;
   syncMessage: string | null;
   syncError: string | null;
+  onAutoSyncToggle: () => void;
+  onNewSourceNameChange: (value: string) => void;
+  onNewSourceUrlChange: (value: string) => void;
+  onNewSourceTypeChange: (value: SheetSyncSourceType) => void;
+  onAddSource: (event: React.FormEvent) => void;
+  onDeleteSource: (source: SheetSyncSource) => void;
+  onSyncSource: (source: SheetSyncSource) => void;
   onSync: () => void;
   onLogout: () => void;
   onBackToSearch: () => void;
 }) {
   return (
     <div className="flex-1">
-      <div className="max-w-3xl mx-auto p-4 md:p-8 pt-8">
+      <div className="max-w-5xl mx-auto p-4 md:p-8 pt-8">
         <div className="flex flex-row justify-between items-end mb-8 border-b-4 border-[#2C1E16] pb-4 relative w-full">
           <button
             type="button"
@@ -868,17 +1139,179 @@ function AdminDashboardScreen({
           </div>
 
           <div className="border-t-4 border-[#2C1E16] pt-6">
-            <p className="mb-4 text-xl md:text-2xl font-black text-[#2C1E16]">
-              Google Sheet 同步
-            </p>
+            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center">
+              <div>
+                <p className="text-xl md:text-2xl font-black text-[#2C1E16]">
+                  Google Sheet 同步
+                </p>
+                <p className="mt-1 text-sm font-bold text-[#2A5C5B]">
+                  自動同步開啟後，每 10 分鐘依序同步所有表單。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onAutoSyncToggle}
+                disabled={isAutoSyncSaving || isSettingsLoading}
+                className={`mx-auto flex w-[178px] items-center justify-between gap-3 border-4 border-[#2C1E16] px-3 py-2 font-black shadow-[4px_4px_0px_#2C1E16] transition-all disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none md:ml-auto md:mr-1 ${
+                  autoSyncEnabled
+                    ? "bg-[#2A5C5B] text-[#EBE3CC]"
+                    : "bg-white text-[#2C1E16] hover:bg-[#F5F0E6]"
+                }`}
+              >
+                <span>{autoSyncEnabled ? "自動同步 ON" : "自動同步 OFF"}</span>
+                <span
+                  className={`relative h-7 w-14 border-2 border-[#2C1E16] bg-[#EBE3CC] shadow-[2px_2px_0px_#2C1E16] transition-colors ${
+                    autoSyncEnabled ? "bg-[#D9A036]" : "bg-[#F5F0E6]"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 border-2 border-[#2C1E16] bg-white transition-transform ${
+                      autoSyncEnabled ? "left-0.5 translate-x-[22px]" : "left-0.5 translate-x-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+            </div>
+
+            <form
+              onSubmit={onAddSource}
+              className="mb-6 border-2 border-[#2C1E16] bg-[#EBE3CC] p-4 shadow-[4px_4px_0px_#2C1E16]"
+            >
+              <div className="mb-4 grid gap-4 md:grid-cols-[1fr_2fr]">
+                <div>
+                  <label className="mb-2 block px-1 text-sm font-black text-[#2C1E16]">
+                    表單名稱
+                  </label>
+                  <input
+                    type="text"
+                    value={newSourceName}
+                    onChange={(e) => onNewSourceNameChange(e.target.value)}
+                    placeholder="例如：一般團 7 月"
+                    className="w-full border-4 border-[#2C1E16] bg-white px-3 py-3 font-bold text-[#2C1E16] placeholder-[#2C1E16]/40 shadow-[inset_2px_2px_0px_rgba(0,0,0,0.1)] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block px-1 text-sm font-black text-[#2C1E16]">
+                    Google Sheet 連結
+                  </label>
+                  <input
+                    type="url"
+                    value={newSourceUrl}
+                    onChange={(e) => onNewSourceUrlChange(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/..."
+                    className="w-full border-4 border-[#2C1E16] bg-white px-3 py-3 font-bold text-[#2C1E16] placeholder-[#2C1E16]/40 shadow-[inset_2px_2px_0px_rgba(0,0,0,0.1)] focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <label className="mb-2 block px-1 text-sm font-black text-[#2C1E16]">
+                    預設類型
+                  </label>
+                  <div className="flex gap-3">
+                    {(["STANDARD", "PREORDER"] as SheetSyncSourceType[]).map((sourceType) => (
+                      <button
+                        key={sourceType}
+                        type="button"
+                        onClick={() => onNewSourceTypeChange(sourceType)}
+                        className={`px-4 py-2 font-black border-2 border-[#2C1E16] transition-all ${
+                          newSourceType === sourceType
+                            ? "bg-[#2A5C5B] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[1px] translate-x-[1px]"
+                            : "bg-white text-[#2C1E16] shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6]"
+                        }`}
+                      >
+                        {toSourceTypeLabel(sourceType)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isAddingSource}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                >
+                  <Plus size={18} />
+                  {isAddingSource ? "新增中..." : "新增表單"}
+                </button>
+              </div>
+            </form>
+
+            <div className="mb-6">
+              {isSettingsLoading ? (
+                <div className="border-2 border-dashed border-[#2C1E16] bg-[#EBE3CC] px-4 py-8 text-center font-black text-[#2A5C5B]">
+                  讀取表單設定中...
+                </div>
+              ) : sources.length > 0 ? (
+                <div className="space-y-3">
+                  {sources.map((source) => {
+                    const sourceSyncing = syncingSourceId === source.id;
+                    const sourceDeleting = deletingSourceId === source.id;
+                    return (
+                      <div
+                        key={source.id}
+                        className="border-2 border-[#2C1E16] bg-white p-4 shadow-[3px_3px_0px_#2C1E16]"
+                      >
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <p className="text-lg font-black text-[#2C1E16]">
+                                {source.displayName}
+                              </p>
+                              <span className="border border-[#2C1E16] bg-[#F5F0E6] px-2 py-0.5 text-xs font-black text-[#2A5C5B]">
+                                {toSourceTypeLabel(source.defaultSourceType)}
+                              </span>
+                            </div>
+                            <p className="break-all text-xs md:text-sm font-bold text-[#2C1E16]/70">
+                              {source.sheetUrl}
+                            </p>
+                            <p className="mt-2 text-xs font-bold text-[#2A5C5B]">
+                              最後同步：{source.lastSyncedAt ? formatDateTime(source.lastSyncedAt) : "尚未同步"}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center md:shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => onSyncSource(source)}
+                              disabled={isSyncing || syncingSourceId !== null || sourceDeleting}
+                              className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                            >
+                              <RefreshCw size={18} className={sourceSyncing ? "animate-spin" : ""} />
+                              {sourceSyncing ? "同步中..." : "同步"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDeleteSource(source)}
+                              disabled={syncingSourceId !== null || sourceDeleting}
+                              className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                            >
+                              <Trash2 size={18} />
+                              {sourceDeleting ? "刪除中..." : "刪除"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-[#2C1E16] bg-[#EBE3CC] px-4 py-8 text-center font-black text-[#2A5C5B]">
+                  目前沒有任何表單連結。
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={onSync}
-              disabled={isSyncing}
+              disabled={isSyncing || syncingSourceId !== null || sources.length === 0}
               className="w-full py-4 bg-[#BC4A3C] text-[#EBE3CC] font-black text-xl border-4 border-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[2px_2px_0px_#2C1E16] active:translate-y-[4px] active:translate-x-[4px] active:shadow-none transition-all flex justify-center items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
             >
               <RefreshCw size={24} className={isSyncing ? "animate-spin" : ""} />
-              {isSyncing ? "同步中..." : "同步 Google Sheet"}
+              {isSyncing ? "全部同步中..." : "全部同步"}
             </button>
 
             {syncMessage && (

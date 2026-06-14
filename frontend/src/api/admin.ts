@@ -11,6 +11,30 @@ export type AdminSyncResult = {
   status: string;
   source: string;
   syncedAt: string;
+  totalSources: number;
+  syncedSources: number;
+  failedSources: number;
+};
+
+export type SheetSyncSourceType = "STANDARD" | "PREORDER";
+
+export type SheetSyncSource = {
+  id: number;
+  displayName: string;
+  sheetUrl: string;
+  defaultSourceType: SheetSyncSourceType;
+  lastSyncedAt?: string;
+};
+
+export type SheetSyncSettings = {
+  autoSyncEnabled: boolean;
+  sources: SheetSyncSource[];
+};
+
+export type CreateSheetSyncSourceInput = {
+  displayName: string;
+  sheetUrl: string;
+  defaultSourceType: SheetSyncSourceType;
 };
 
 export class AdminApiError extends Error {
@@ -49,6 +73,67 @@ export async function deleteAdminSession(token: string): Promise<void> {
 
 export async function syncGoogleSheet(token: string): Promise<AdminSyncResult> {
   return requestAdmin<AdminSyncResult>("/api/admin/sheet-sync", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export async function fetchSheetSyncSettings(token: string): Promise<SheetSyncSettings> {
+  return requestAdmin<SheetSyncSettings>("/api/admin/sheet-sync", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+}
+
+export async function updateAutoSync(
+  token: string,
+  autoSyncEnabled: boolean
+): Promise<SheetSyncSettings> {
+  return requestAdmin<SheetSyncSettings>("/api/admin/sheet-sync/settings/auto-sync", {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ autoSyncEnabled })
+  });
+}
+
+export async function createSheetSyncSource(
+  token: string,
+  input: CreateSheetSyncSourceInput
+): Promise<SheetSyncSource> {
+  return requestAdmin<SheetSyncSource>("/api/admin/sheet-sync/sources", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+}
+
+export async function deleteSheetSyncSource(token: string, sourceId: number): Promise<void> {
+  await requestAdmin<{ deleted: boolean; sourceId: number }>(
+    `/api/admin/sheet-sync/sources/${sourceId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  );
+}
+
+export async function syncSheetSyncSource(
+  token: string,
+  sourceId: number
+): Promise<AdminSyncResult> {
+  return requestAdmin<AdminSyncResult>(`/api/admin/sheet-sync/sources/${sourceId}/sync`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`

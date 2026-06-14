@@ -5,7 +5,11 @@ import com.alibaba.excel.annotation.ExcelProperty;
 import com.fy20047.susan.domain.GroupSourceType;
 import com.fy20047.susan.domain.OrderGroup;
 import com.fy20047.susan.domain.OrderItem;
+import com.fy20047.susan.domain.SheetSyncSettings;
+import com.fy20047.susan.domain.SheetSyncSource;
 import com.fy20047.susan.repository.OrderGroupRepository;
+import com.fy20047.susan.repository.SheetSyncSettingsRepository;
+import com.fy20047.susan.repository.SheetSyncSourceRepository;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -25,6 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -35,6 +40,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +51,9 @@ public class SheetSyncService {
     private static final Logger log = LoggerFactory.getLogger(SheetSyncService.class);
     private static final List<String> SETTINGS_SHEET_NAMES = List.of("設定");
     private static final Pattern QUANTITY_PATTERN = Pattern.compile("\\*(\\d+)");
+    private static final Pattern GOOGLE_SHEET_URL_PATTERN = Pattern.compile(
+            "https?://docs\\.google\\.com/spreadsheets/d/([^/?#\\s)]+)",
+            Pattern.CASE_INSENSITIVE);
     private static final Set<String> TRUE_VALUES = Set.of("TRUE", "T", "1", "Y", "YES", "V");
     private static final String BUYER_HEADER = resolveExcelHeader("buyerNickname");
     private static final String ITEM_NAME_HEADER = resolveExcelHeader("itemName");
@@ -99,11 +108,85 @@ public class SheetSyncService {
 
     private final OrderGroupRepository orderGroupRepository;
     private final SheetSyncWriter sheetSyncWriter;
+    private final SheetSyncSourceRepository sheetSyncSourceRepository;
+    private final SheetSyncSettingsRepository sheetSyncSettingsRepository;
     private final AtomicBoolean syncInProgress = new AtomicBoolean(false);
+
+    @Autowired
+    public SheetSyncService(
+            OrderGroupRepository orderGroupRepository,
+            SheetSyncWriter sheetSyncWriter,
+            SheetSyncSourceRepository sheetSyncSourceRepository,
+            SheetSyncSettingsRepository sheetSyncSettingsRepository
+    ) {
+        this.orderGroupRepository = orderGroupRepository;
+        this.sheetSyncWriter = sheetSyncWriter;
+        this.sheetSyncSourceRepository = sheetSyncSourceRepository;
+        this.sheetSyncSettingsRepository = sheetSyncSettingsRepository;
+    }
 
     public SheetSyncService(OrderGroupRepository orderGroupRepository, SheetSyncWriter sheetSyncWriter) {
         this.orderGroupRepository = orderGroupRepository;
         this.sheetSyncWriter = sheetSyncWriter;
+        this.sheetSyncSourceRepository = null;
+        this.sheetSyncSettingsRepository = null;
+    }
+
+    public List<SheetSyncSource> listSyncSources() {
+        ensureDefaultSourcesInitialized();
+        if (sheetSyncSourceRepository == null) {
+            return List.of();
+        }
+        return sheetSyncSourceRepository.findAllByOrderByDisplayOrderAscIdAsc();
+    }
+
+    public boolean isAutoSyncEnabled() {
+        if (sheetSyncSettingsRepository == null) {
+            return false;
+        }
+        SheetSyncSettings settings = getOrCreateSettings();
+        return Boolean.TRUE.equals(settings.getAutoSyncEnabled());
+    }
+
+    @Transactional
+    public SheetSyncSettings setAutoSyncEnabled(boolean enabled) {
+        SheetSyncSettings settings = getOrCreateSettings();
+        settings.setAutoSyncEnabled(enabled);
+        settings.setUpdatedAt(LocalDateTime.now());
+        return sheetSyncSettingsRepository.save(settings);
+    }
+
+    @Transactional
+    public SheetSyncSource createSyncSource(String displayName, String sheetUrl, GroupSourceType defaultSourceType) {
+        if (sheetSyncSourceRepository == null) {
+            throw new IllegalStateException("Sheet sync source repository is not available.");
+        }
+        ensureDefaultSourcesInitialized();
+
+        String normalizedUrl = normalizeSheetUrl(sheetUrl);
+
+        SheetSyncSource source = new SheetSyncSource();
+        source.setDisplayName(resolveDisplayName(displayName));
+        source.setSheetUrl(normalizedUrl);
+        source.setDefaultSourceType(defaultSourceType == null ? GroupSourceType.STANDARD : defaultSourceType);
+        source.setDisplayOrder(sheetSyncSourceRepository.findMaxDisplayOrder() + 1);
+        source.setSourceKey(generateSourceKey());
+        source.setCreatedAt(LocalDateTime.now());
+        source.setUpdatedAt(LocalDateTime.now());
+        return sheetSyncSourceRepository.save(source);
+    }
+
+    @Transactional
+    public boolean deleteSyncSource(Long sourceId) {
+        if (sheetSyncSourceRepository == null || sourceId == null) {
+            return false;
+        }
+        ensureDefaultSourcesInitialized();
+        if (!sheetSyncSourceRepository.existsById(sourceId)) {
+            return false;
+        }
+        sheetSyncSourceRepository.deleteById(sourceId);
+        return true;
     }
 
     @Transactional
@@ -214,25 +297,45 @@ public class SheetSyncService {
 
     public SyncRunResult syncFromGoogleSheets() {
         List<SyncSource> sources = resolveSyncSources();
+        return syncSources(sources);
+    }
+
+    public SyncRunResult syncGoogleSheetSource(Long sourceId) {
+        if (sourceId == null || sheetSyncSourceRepository == null) {
+            return new SyncRunResult(SyncRunStatus.SOURCE_NOT_FOUND, null, 0, 0, 0);
+        }
+        ensureDefaultSourcesInitialized();
+        return sheetSyncSourceRepository.findById(sourceId)
+                .map(source -> syncSources(List.of(toSyncSource(source))))
+                .orElseGet(() -> new SyncRunResult(SyncRunStatus.SOURCE_NOT_FOUND, null, 0, 0, 0));
+    }
+
+    private SyncRunResult syncSources(List<SyncSource> sources) {
         if (sources.isEmpty()) {
-            return new SyncRunResult(SyncRunStatus.NO_SOURCES, null);
+            return new SyncRunResult(SyncRunStatus.NO_SOURCES, null, 0, 0, 0);
         }
         if (!syncInProgress.compareAndSet(false, true)) {
             log.warn("Sheet sync is already running.");
-            return new SyncRunResult(SyncRunStatus.ALREADY_RUNNING, null);
+            return new SyncRunResult(SyncRunStatus.ALREADY_RUNNING, null, sources.size(), 0, 0);
         }
 
         LocalDateTime syncTimestamp = LocalDateTime.now();
         int successCount = 0;
+        int failureCount = 0;
         Exception firstFailure = null;
         List<String> successfulSourceKeys = new ArrayList<>();
+        List<Long> successfulSourceIds = new ArrayList<>();
         try {
             for (SyncSource source : sources) {
                 try {
                     syncSource(source, syncTimestamp);
                     successCount += 1;
                     successfulSourceKeys.add(source.sourceKey());
+                    if (source.id() != null) {
+                        successfulSourceIds.add(source.id());
+                    }
                 } catch (Exception e) {
+                    failureCount += 1;
                     if (firstFailure == null) {
                         firstFailure = e;
                     }
@@ -251,7 +354,15 @@ public class SheetSyncService {
                         syncTimestamp,
                         completedAt);
             }
-            return new SyncRunResult(SyncRunStatus.SYNCED, completedAt);
+            if (sheetSyncSourceRepository != null && !successfulSourceIds.isEmpty()) {
+                sheetSyncSourceRepository.updateLastSyncedAt(successfulSourceIds, completedAt);
+            }
+            return new SyncRunResult(
+                    SyncRunStatus.SYNCED,
+                    completedAt,
+                    sources.size(),
+                    successCount,
+                    failureCount);
         } finally {
             syncInProgress.set(false);
         }
@@ -317,15 +428,34 @@ public class SheetSyncService {
     }
 
     private List<SyncSource> resolveSyncSources() {
+        if (sheetSyncSourceRepository != null) {
+            ensureDefaultSourcesInitialized();
+            return sheetSyncSourceRepository.findAllByOrderByDisplayOrderAscIdAsc()
+                    .stream()
+                    .map(this::toSyncSource)
+                    .toList();
+        }
+        return resolvePropertySyncSources();
+    }
+
+    private List<SyncSource> resolvePropertySyncSources() {
         List<SyncSource> sources = new ArrayList<>();
         if (!isBlank(preorderGoogleSheetUrl)) {
-            sources.add(new SyncSource("preorder", preorderGoogleSheetUrl.trim(), GroupSourceType.PREORDER));
+            sources.add(new SyncSource(null, "preorder", preorderGoogleSheetUrl.trim(), GroupSourceType.PREORDER));
         }
         String standardUrl = !isBlank(standardGoogleSheetUrl) ? standardGoogleSheetUrl : legacyGoogleSheetUrl;
         if (!isBlank(standardUrl)) {
-            sources.add(new SyncSource("standard", standardUrl.trim(), GroupSourceType.STANDARD));
+            sources.add(new SyncSource(null, "standard", standardUrl.trim(), GroupSourceType.STANDARD));
         }
         return sources;
+    }
+
+    private SyncSource toSyncSource(SheetSyncSource source) {
+        return new SyncSource(
+                source.getId(),
+                source.getSourceKey(),
+                source.getSheetUrl(),
+                source.getDefaultSourceType());
     }
 
     private List<CSVRecord> readAllRecords(Path csvPath) {
@@ -578,15 +708,103 @@ public class SheetSyncService {
         return false;
     }
 
-    private record SyncSource(String sourceKey, String url, GroupSourceType defaultSourceType) {
+    private void ensureDefaultSourcesInitialized() {
+        if (sheetSyncSettingsRepository == null || sheetSyncSourceRepository == null) {
+            return;
+        }
+
+        SheetSyncSettings settings = getOrCreateSettings();
+        if (Boolean.TRUE.equals(settings.getDefaultSourcesInitialized())) {
+            return;
+        }
+
+        int displayOrder = sheetSyncSourceRepository.findMaxDisplayOrder();
+        for (SyncSource source : resolvePropertySyncSources()) {
+            if (sheetSyncSourceRepository.existsBySourceKey(source.sourceKey())) {
+                continue;
+            }
+            SheetSyncSource entity = new SheetSyncSource();
+            entity.setDisplayName(defaultSourceDisplayName(source.sourceKey()));
+            entity.setSourceKey(source.sourceKey());
+            entity.setSheetUrl(source.url());
+            entity.setDefaultSourceType(source.defaultSourceType());
+            entity.setDisplayOrder(++displayOrder);
+            entity.setCreatedAt(LocalDateTime.now());
+            entity.setUpdatedAt(LocalDateTime.now());
+            sheetSyncSourceRepository.save(entity);
+        }
+
+        settings.setDefaultSourcesInitialized(true);
+        settings.setUpdatedAt(LocalDateTime.now());
+        sheetSyncSettingsRepository.save(settings);
+    }
+
+    private SheetSyncSettings getOrCreateSettings() {
+        if (sheetSyncSettingsRepository == null) {
+            throw new IllegalStateException("Sheet sync settings repository is not available.");
+        }
+        return sheetSyncSettingsRepository.findById(SheetSyncSettings.SINGLETON_ID)
+                .orElseGet(() -> sheetSyncSettingsRepository.save(new SheetSyncSettings()));
+    }
+
+    private String resolveDisplayName(String displayName) {
+        String normalized = displayName == null ? "" : displayName.trim();
+        if (!normalized.isEmpty()) {
+            return normalized;
+        }
+        return "Google Sheet " + (sheetSyncSourceRepository.findMaxDisplayOrder() + 1);
+    }
+
+    private String normalizeSheetUrl(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("表單連結不能為空。");
+        }
+
+        Matcher matcher = GOOGLE_SHEET_URL_PATTERN.matcher(normalized);
+        if (matcher.find()) {
+            return "https://docs.google.com/spreadsheets/d/" + matcher.group(1) + "/export?format=xlsx";
+        }
+        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+            throw new IllegalArgumentException("表單連結必須是 http 或 https URL。");
+        }
+        return normalized;
+    }
+
+    private String generateSourceKey() {
+        String sourceKey;
+        do {
+            sourceKey = "sheet-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        } while (sheetSyncSourceRepository.existsBySourceKey(sourceKey));
+        return sourceKey;
+    }
+
+    private String defaultSourceDisplayName(String sourceKey) {
+        if ("preorder".equals(sourceKey)) {
+            return "受注團表單";
+        }
+        if ("standard".equals(sourceKey)) {
+            return "一般團表單";
+        }
+        return sourceKey;
+    }
+
+    private record SyncSource(Long id, String sourceKey, String url, GroupSourceType defaultSourceType) {
     }
 
     public enum SyncRunStatus {
         SYNCED,
         NO_SOURCES,
-        ALREADY_RUNNING
+        ALREADY_RUNNING,
+        SOURCE_NOT_FOUND
     }
 
-    public record SyncRunResult(SyncRunStatus status, LocalDateTime syncedAt) {
+    public record SyncRunResult(
+            SyncRunStatus status,
+            LocalDateTime syncedAt,
+            int totalSources,
+            int syncedSources,
+            int failedSources
+    ) {
     }
 }

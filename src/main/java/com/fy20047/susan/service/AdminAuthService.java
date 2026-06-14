@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 public class AdminAuthService {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final Duration SESSION_TTL = Duration.ofHours(8);
+    private static final Duration SESSION_TTL = Duration.ofHours(2);
 
     private final String adminUsername;
     private final String adminPassword;

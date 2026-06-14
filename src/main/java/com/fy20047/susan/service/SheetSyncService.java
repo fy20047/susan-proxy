@@ -169,6 +169,8 @@ public class SheetSyncService {
             String depositPaidDate = getValue(record, headerIndexMap, DEPOSIT_PAID_DATE_HEADER);
             item.setDepositPaidDate(depositPaidDate);
             item.setDepositReconciled(parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER)));
+            boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, PURCHASED_HEADER));
+            item.setPurchased(isPurchased);
             String checkMark = getValue(record, headerIndexMap, CHECK_MARK_HEADER);
             if (isBlank(checkMark) && !isBlank(depositPaidDate)) {
                 checkMark = depositPaidDate;
@@ -188,7 +190,6 @@ public class SheetSyncService {
                         isShipped));
             } else {
                 boolean isReconciled = parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER));
-                boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, PURCHASED_HEADER));
                 boolean isArrived = parseBoolean(getValue(record, headerIndexMap, ARRIVED_HEADER));
                 boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
                 item.setItemStatus(StatusResolver.determineLegacy(isReconciled, isPurchased, isArrived, isShipped));

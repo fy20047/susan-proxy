@@ -20,7 +20,7 @@ export default function OrderCard({
 }: OrderCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const actualTotalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  const actualTotalItems = order.purchasedQuantity;
   const actualTotalAmount = order.totalAmount;
   const paidDeposit = order.paidDepositAmount;
   const pendingDeposit = order.pendingDepositAmount;

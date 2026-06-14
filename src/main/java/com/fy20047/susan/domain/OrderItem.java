@@ -65,6 +65,9 @@ public class OrderItem {
     @Column(name = "deposit_reconciled")
     private Boolean depositReconciled = false;
 
+    @Column(name = "is_purchased")
+    private Boolean purchased = false;
+
     @Column(name = "check_mark", length = 32)
     private String checkMark;
 

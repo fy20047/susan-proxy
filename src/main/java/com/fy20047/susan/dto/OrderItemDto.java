@@ -11,6 +11,7 @@ public class OrderItemDto {
     private String balanceDueDate;
     private String depositPaidDate;
     private Boolean depositReconciled;
+    private Boolean purchased;
     private String checkMark;
     private Integer depositAmount;
     private Integer balanceAmount;
@@ -74,6 +75,14 @@ public class OrderItemDto {
 
     public void setDepositReconciled(Boolean depositReconciled) {
         this.depositReconciled = depositReconciled;
+    }
+
+    public Boolean getPurchased() {
+        return purchased;
+    }
+
+    public void setPurchased(Boolean purchased) {
+        this.purchased = purchased;
     }
 
     public String getCheckMark() {

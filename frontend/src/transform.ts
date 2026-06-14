@@ -35,6 +35,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
       balanceDueDate: normalizedBalanceDueDate || undefined,
       checkMark: normalizedCheckMark || undefined,
       depositReconciled: item.depositReconciled,
+      isPurchased: item.purchased ?? false,
       isDepositPaid,
       isBalancePaid: normalizedBalanceDueDate.length > 0,
       jpyPrice: item.jpyPrice,
@@ -56,6 +57,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     bonusCount: group.bonusCount ?? 0,
     items,
     totalAmount: 0,
+    purchasedQuantity: 0,
     depositAmount: 0,
     paidDepositAmount: 0,
     pendingDepositAmount: 0,
@@ -67,6 +69,10 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
 
 export function rebuildOrderView(order: OrderView, items: OrderItemView[] = order.items): OrderView {
   const totalAmount = items.reduce((sum, item) => sum + item.totalAmount, 0);
+  const purchasedQuantity = items.reduce(
+    (sum, item) => sum + (item.isPurchased ? item.quantity : 0),
+    0
+  );
   const depositAmount = items.reduce((sum, item) => sum + item.depositAmount, 0);
   const paidDepositAmount = items.reduce(
     (sum, item) => sum + (item.isDepositPaid ? item.depositAmount : 0),
@@ -86,6 +92,7 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
       ...order,
       items,
       totalAmount,
+      purchasedQuantity,
       depositAmount,
       paidDepositAmount,
       pendingDepositAmount,
@@ -101,6 +108,7 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
     ...order,
     items,
     totalAmount,
+    purchasedQuantity,
     depositAmount,
     paidDepositAmount,
     pendingDepositAmount,

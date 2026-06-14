@@ -29,6 +29,7 @@ class SheetSyncServiceTest {
     private static final String ITEM = "\u54c1\u9805";
     private static final String QUEUED = "\u662f\u5426\u6392\u5230";
     private static final String LEGACY_QUEUED = "\u5df2\u6392\u5230";
+    private static final String PURCHASED = "\u5df2\u63a1\u8cfc";
 
     @TempDir
     Path tempDir;
@@ -66,6 +67,13 @@ class SheetSyncServiceTest {
         OrderItem item = syncSingleItem(List.of(), List.of());
 
         Assertions.assertNull(item.getQueued());
+    }
+
+    @Test
+    void syncFromCsvStoresPurchasedFlag() throws IOException {
+        OrderItem item = syncSingleItem(List.of(PURCHASED), List.of("TRUE"));
+
+        Assertions.assertEquals(true, item.getPurchased());
     }
 
     private OrderItem syncSingleItem(List<String> extraHeaders, List<String> extraValues) throws IOException {

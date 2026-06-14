@@ -232,6 +232,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             String depositPaidDate = safeString(row.getDepositPaidDate());
             item.setDepositPaidDate(depositPaidDate);
             item.setDepositReconciled(parseBoolean(row.getReconciled()));
+            item.setPurchased(parseBoolean(row.getPurchased()));
             String checkMark = safeString(row.getCheckMark());
             if (checkMark.isEmpty() && !depositPaidDate.isEmpty()) {
                 checkMark = depositPaidDate;

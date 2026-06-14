@@ -71,6 +71,7 @@ export type ApiOrderItem = {
   balanceDueDate?: string;
   depositPaidDate?: string;
   depositReconciled?: boolean;
+  purchased?: boolean;
   checkMark?: string;
   depositAmount?: number;
   balanceAmount?: number;
@@ -107,6 +108,7 @@ export type OrderItemView = {
   balanceDueDate?: string;
   checkMark?: string;
   depositReconciled?: boolean;
+  isPurchased: boolean;
   isDepositPaid: boolean;
   isBalancePaid: boolean;
   jpyPrice?: number;
@@ -127,6 +129,7 @@ export type OrderView = {
   bonusCount: number;
   items: OrderItemView[];
   totalAmount: number;
+  purchasedQuantity: number;
   depositAmount: number;
   paidDepositAmount: number;
   pendingDepositAmount: number;

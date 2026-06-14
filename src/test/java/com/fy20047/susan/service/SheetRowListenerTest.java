@@ -137,6 +137,18 @@ class SheetRowListenerTest {
     }
 
     @Test
+    void storesOrderRankWithoutOverwritingOrderSn() {
+        List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> {
+            row.setOrderRank("喊單序-1");
+            row.setOrderSn("順位-2");
+        });
+
+        OrderItem item = savedItems.getFirst();
+        Assertions.assertEquals("喊單序-1", item.getOrderRank());
+        Assertions.assertEquals("順位-2", item.getOrderSn());
+    }
+
+    @Test
     void skipsSheetWhenRequiredHeaderIsMissing() {
         SheetSyncWriter writer = mock(SheetSyncWriter.class);
         SheetRowListener listener = new SheetRowListener(writer, null, true, 100, 10, 64, 16);

@@ -1,11 +1,13 @@
 package com.fy20047.susan.dto;
 
 import com.fy20047.susan.domain.ItemStatus;
+import com.fy20047.susan.domain.ShippingStatus;
 
 public class OrderItemDto {
 
     private Long id;
     private String orderSn;
+    private String orderRank;
     private Boolean queued;
     private Boolean checkedIn;
     private String balanceDueDate;
@@ -20,6 +22,7 @@ public class OrderItemDto {
     private Integer quantity;
     private Integer jpyPrice;
     private ItemStatus itemStatus;
+    private ShippingStatus shippingStatus;
 
     public Long getId() {
         return id;
@@ -35,6 +38,14 @@ public class OrderItemDto {
 
     public void setOrderSn(String orderSn) {
         this.orderSn = orderSn;
+    }
+
+    public String getOrderRank() {
+        return orderRank;
+    }
+
+    public void setOrderRank(String orderRank) {
+        this.orderRank = orderRank;
     }
 
     public Boolean getQueued() {
@@ -147,5 +158,13 @@ public class OrderItemDto {
 
     public void setItemStatus(ItemStatus itemStatus) {
         this.itemStatus = itemStatus;
+    }
+
+    public ShippingStatus getShippingStatus() {
+        return shippingStatus;
+    }
+
+    public void setShippingStatus(ShippingStatus shippingStatus) {
+        this.shippingStatus = shippingStatus;
     }
 }

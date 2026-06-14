@@ -72,6 +72,7 @@ public class OrderQueryController {
                 OrderItemDto itemDto = new OrderItemDto();
                 itemDto.setId(item.getId());
                 itemDto.setOrderSn(item.getOrderSn());
+                itemDto.setOrderRank(item.getOrderRank());
                 itemDto.setQueued(item.getQueued());
                 itemDto.setCheckedIn(item.getCheckedIn());
                 itemDto.setBalanceDueDate(item.getBalanceDueDate());
@@ -86,6 +87,7 @@ public class OrderQueryController {
                 itemDto.setQuantity(item.getQuantity());
                 itemDto.setJpyPrice(item.getJpyPrice());
                 itemDto.setItemStatus(item.getItemStatus());
+                itemDto.setShippingStatus(item.getShippingStatus());
                 itemDtos.add(itemDto);
             }
             dto.setItems(itemDtos);

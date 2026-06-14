@@ -221,13 +221,11 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             }
 
             OrderItem item = new OrderItem();
-            String orderSn = safeString(row.getOrderRank());
-            if (orderSn.isEmpty()) {
-                orderSn = safeString(row.getOrderSn());
-            }
-            item.setOrderSn(orderSn);
+            item.setOrderRank(safeString(row.getOrderRank()));
+            item.setOrderSn(safeString(row.getOrderSn()));
             item.setQueued(resolveQueued(row));
-            item.setCheckedIn(parseBoolean(row.getCheckedIn()));
+            boolean isCheckedIn = parseBoolean(row.getCheckedIn());
+            item.setCheckedIn(isCheckedIn);
             item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
             String depositPaidDate = safeString(row.getDepositPaidDate());
             item.setDepositPaidDate(depositPaidDate);
@@ -244,7 +242,8 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             item.setItemName(itemName);
             item.setQuantity(defaultInt(row.getQuantity(), 1));
             item.setJpyPrice(row.getJpyPrice());
-            item.setItemStatus(resolveItemStatus(row));
+            item.setItemStatus(resolveItemStatus(row, itemName, depositPaidDate, isCheckedIn));
+            item.setShippingStatus(resolveShippingStatus(row));
 
             if (streamByBuyer) {
                 OrderGroup groupRef = new OrderGroup();
@@ -320,16 +319,25 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         return newGroup;
     }
 
-    private ItemStatus resolveItemStatus(SheetRowDto row) {
+    private ItemStatus resolveItemStatus(
+            SheetRowDto row,
+            String itemName,
+            String depositPaidDate,
+            boolean isCheckedIn) {
         if (currentSourceType == GroupSourceType.PREORDER && hasPreorderStatusColumn) {
             return StatusResolver.determinePreorder(row.getPreorderStatus(), parseBoolean(row.getShipped()));
         }
 
-        boolean isReconciled = parseBoolean(row.getReconciled());
         boolean isPurchased = parseBoolean(row.getPurchased());
-        boolean isArrived = parseBoolean(row.getArrived());
+        return StatusResolver.determineStandard(itemName, isPurchased, depositPaidDate, isCheckedIn);
+    }
+
+    private com.fy20047.susan.domain.ShippingStatus resolveShippingStatus(SheetRowDto row) {
         boolean isShipped = parseBoolean(row.getShipped());
-        return StatusResolver.determineLegacy(isReconciled, isPurchased, isArrived, isShipped);
+        if (currentSourceType == GroupSourceType.PREORDER && hasPreorderStatusColumn) {
+            return StatusResolver.determinePreorderShipping(row.getPreorderStatus(), isShipped);
+        }
+        return StatusResolver.determineShipping(parseBoolean(row.getArrived()), isShipped);
     }
 
     private Boolean resolveQueued(SheetRowDto row) {

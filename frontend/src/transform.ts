@@ -26,6 +26,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
       id: item.id,
       name: item.itemName,
       orderSn: item.orderSn,
+      orderRank: item.orderRank,
       queued: item.queued,
       checkedIn: isCheckedIn,
       quantity: item.quantity ?? 1,
@@ -41,8 +42,8 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
       jpyPrice: item.jpyPrice,
       statusCode,
       status: toItemStatusLabel(statusCode),
-      shippingStatusCode: sourceType === "PREORDER" ? toShippingStatusCode(statusCode) : undefined,
-      shippingStatus: sourceType === "PREORDER" ? toShippingStatusLabel(toShippingStatusCode(statusCode)) : undefined
+      shippingStatusCode: item.shippingStatus ?? toShippingStatusCode(statusCode),
+      shippingStatus: toShippingStatusLabel(item.shippingStatus ?? toShippingStatusCode(statusCode))
     };
   });
 
@@ -53,7 +54,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     groupName: group.groupName ?? "未命名團",
     buyerNickname: group.buyerNickname,
     summaryStatusCode: sourceType === "PREORDER" ? "NOT_ARRIVED" : "REGISTERED",
-    summaryStatus: sourceType === "PREORDER" ? "尚未抵台" : "已登記",
+    summaryStatus: sourceType === "PREORDER" ? "未抵台" : "已登記",
     bonusCount: group.bonusCount ?? 0,
     items,
     totalAmount: 0,

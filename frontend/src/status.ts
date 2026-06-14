@@ -10,7 +10,9 @@ import {
   SummaryStatusCode
 } from "./types";
 
-type StatusCarrier = { itemStatus?: ItemStatusCode } | { statusCode?: ItemStatusCode };
+type StatusCarrier =
+  | { itemStatus?: ItemStatusCode; shippingStatusCode?: ShippingStatusCode }
+  | { statusCode?: ItemStatusCode; shippingStatusCode?: ShippingStatusCode };
 
 export type StandardFilter = {
   key: StandardItemStatusCode | "ALL";
@@ -32,9 +34,7 @@ export const STANDARD_STATUS_FILTERS: StandardFilter[] = [
   { key: "REGISTERED", label: "已登記" },
   { key: "PENDING_DEPOSIT", label: "待匯定" },
   { key: "PENDING_PURCHASE", label: "待購入" },
-  { key: "IN_TRANSIT", label: "運送中" },
-  { key: "ARRIVED", label: "已抵台待出貨" },
-  { key: "SHIPPED", label: "已出貨" }
+  { key: "IN_TRANSIT", label: "轉送中" }
 ];
 
 export const PREORDER_ITEM_FILTERS: PreorderItemFilter[] = [
@@ -50,8 +50,8 @@ export const PREORDER_ITEM_FILTERS: PreorderItemFilter[] = [
 
 export const PREORDER_SHIPPING_FILTERS: ShippingFilter[] = [
   { key: "ALL", label: "全部" },
-  { key: "NOT_ARRIVED", label: "尚未抵台" },
-  { key: "READY_TO_SHIP", label: "可下單等待出貨" },
+  { key: "NOT_ARRIVED", label: "未抵台" },
+  { key: "READY_TO_SHIP", label: "已抵台待出貨" },
   { key: "SHIPPED", label: "已出貨" }
 ];
 
@@ -81,7 +81,7 @@ export function toItemStatusLabel(code?: ItemStatusCode): ItemStatusLabel {
     case "PENDING_PURCHASE":
       return "待購入";
     case "IN_TRANSIT":
-      return "運送中";
+      return "轉送中";
     case "ARRIVED":
       return "已抵台待出貨";
     case "SHIPPED":
@@ -112,8 +112,10 @@ export function toStandardOrderStatusLabel(code: StandardItemStatusCode): Standa
 
 export function toShippingStatusCode(code?: ItemStatusCode): ShippingStatusCode {
   switch (code) {
+    case "ARRIVED":
     case "PREORDER_ARRIVED":
       return "READY_TO_SHIP";
+    case "SHIPPED":
     case "PREORDER_SHIPPED":
       return "SHIPPED";
     default:
@@ -124,12 +126,12 @@ export function toShippingStatusCode(code?: ItemStatusCode): ShippingStatusCode 
 export function toShippingStatusLabel(code: ShippingStatusCode): ShippingStatusLabel {
   switch (code) {
     case "READY_TO_SHIP":
-      return "可下單等待出貨";
+      return "已抵台待出貨";
     case "SHIPPED":
       return "已出貨";
     case "NOT_ARRIVED":
     default:
-      return "尚未抵台";
+      return "未抵台";
   }
 }
 
@@ -150,7 +152,10 @@ export function deriveStandardOrderStatusCode(items: StatusCarrier[]): StandardI
 export function derivePreorderShippingStatusCode(items: StatusCarrier[]): ShippingStatusCode {
   let highest: ShippingStatusCode = "NOT_ARRIVED";
   for (const item of items) {
-    const shippingStatusCode = toShippingStatusCode(getStatusCode(item));
+    const shippingStatusCode =
+      "shippingStatusCode" in item && item.shippingStatusCode
+        ? item.shippingStatusCode
+        : toShippingStatusCode(getStatusCode(item));
     if (SHIPPING_PRIORITY[shippingStatusCode] > SHIPPING_PRIORITY[highest]) {
       highest = shippingStatusCode;
     }
@@ -189,7 +194,6 @@ export function getItemStatusClass(status: ItemStatusLabel): string {
     case "已抵台待出貨":
     case "已抵台":
       return `${base} bg-[#BC4A3C] text-[#EBE3CC]`;
-    case "運送中":
     case "轉送中":
       return `${base} bg-[#5B8266] text-[#EBE3CC]`;
     case "待購入":

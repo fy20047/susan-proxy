@@ -158,13 +158,11 @@ public class SheetSyncService {
             }
 
             OrderItem item = new OrderItem();
-            String orderSn = getValue(record, headerIndexMap, ORDER_RANK_HEADER);
-            if (isBlank(orderSn)) {
-                orderSn = getValue(record, headerIndexMap, ORDER_SN_HEADER);
-            }
-            item.setOrderSn(orderSn);
+            item.setOrderRank(getValue(record, headerIndexMap, ORDER_RANK_HEADER));
+            item.setOrderSn(getValue(record, headerIndexMap, ORDER_SN_HEADER));
             item.setQueued(resolveQueued(record, headerIndexMap, hasQueuedColumn, hasLegacyQueuedColumn));
-            item.setCheckedIn(parseBoolean(getValue(record, headerIndexMap, CHECKED_IN_HEADER)));
+            boolean isCheckedIn = parseBoolean(getValue(record, headerIndexMap, CHECKED_IN_HEADER));
+            item.setCheckedIn(isCheckedIn);
             item.setBalanceDueDate(getValue(record, headerIndexMap, BALANCE_DUE_DATE_HEADER));
             String depositPaidDate = getValue(record, headerIndexMap, DEPOSIT_PAID_DATE_HEADER);
             item.setDepositPaidDate(depositPaidDate);
@@ -185,14 +183,16 @@ public class SheetSyncService {
 
             if (hasPreorderStatusColumn) {
                 boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
+                String preorderStatus = getValue(record, headerIndexMap, PREORDER_STATUS_HEADER);
                 item.setItemStatus(StatusResolver.determinePreorder(
-                        getValue(record, headerIndexMap, PREORDER_STATUS_HEADER),
+                        preorderStatus,
                         isShipped));
+                item.setShippingStatus(StatusResolver.determinePreorderShipping(preorderStatus, isShipped));
             } else {
-                boolean isReconciled = parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER));
                 boolean isArrived = parseBoolean(getValue(record, headerIndexMap, ARRIVED_HEADER));
                 boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
-                item.setItemStatus(StatusResolver.determineLegacy(isReconciled, isPurchased, isArrived, isShipped));
+                item.setItemStatus(StatusResolver.determineStandard(itemName, isPurchased, depositPaidDate, isCheckedIn));
+                item.setShippingStatus(StatusResolver.determineShipping(isArrived, isShipped));
             }
 
             group.addItem(item);

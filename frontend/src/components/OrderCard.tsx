@@ -104,6 +104,15 @@ export default function OrderCard({
                 <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 flex-1">
                   <div className="flex shrink-0">
                     <span className={getItemStatusClass(item.status)}>{item.status}</span>
+                    {item.shippingStatus && item.shippingStatusCode && (
+                      <span
+                        className={`ml-2 text-[10px] md:text-xs px-1.5 py-0.5 border border-[#2C1E16] font-bold shadow-[1px_1px_0px_#2C1E16] flex-shrink-0 ${getSummaryStatusClass(
+                          item.shippingStatusCode
+                        )}`}
+                      >
+                        {item.shippingStatus}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex justify-between items-start md:block flex-1">

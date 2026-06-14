@@ -38,6 +38,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [standardFilter, setStandardFilter] = useState<StandardItemStatusCode | "ALL">("ALL");
+  const [standardShippingFilter, setStandardShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
   const [preorderItemFilter, setPreorderItemFilter] = useState<PreorderItemStatusCode | "ALL">("ALL");
   const [preorderShippingFilter, setPreorderShippingFilter] = useState<ShippingStatusCode | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
@@ -78,19 +79,24 @@ export default function App() {
   }, [preorderOrders, preorderItemFilter, preorderShippingFilter]);
 
   const filteredStandardOrders = useMemo(() => {
-    if (standardFilter === "ALL") {
+    if (standardFilter === "ALL" && standardShippingFilter === "ALL") {
       return standardOrders;
     }
 
     return standardOrders.reduce<OrderView[]>((acc, order) => {
-      const items = order.items.filter((item) => item.statusCode === standardFilter);
+      const items = order.items.filter((item) => {
+        const matchesItemStatus = standardFilter === "ALL" || item.statusCode === standardFilter;
+        const matchesShippingStatus =
+          standardShippingFilter === "ALL" || item.shippingStatusCode === standardShippingFilter;
+        return matchesItemStatus && matchesShippingStatus;
+      });
       if (!items.length) {
         return acc;
       }
       acc.push(rebuildOrderView(order, items));
       return acc;
     }, []);
-  }, [standardOrders, standardFilter]);
+  }, [standardOrders, standardFilter, standardShippingFilter]);
 
   const quickOrderEligibleOrders = useMemo(
     () =>
@@ -136,7 +142,7 @@ export default function App() {
 
   const showPreorderStatus =
     preorderItemFilter !== "ALL" || preorderShippingFilter !== "ALL";
-  const showStandardStatus = standardFilter !== "ALL";
+  const showStandardStatus = standardFilter !== "ALL" || standardShippingFilter !== "ALL";
   const preorderEmptyLabel =
     preorderShippingFilter !== "ALL"
       ? toShippingStatusLabel(preorderShippingFilter)
@@ -144,7 +150,11 @@ export default function App() {
         ? "全部"
         : PREORDER_ITEM_FILTERS.find((filter) => filter.key === preorderItemFilter)?.label ?? "全部";
   const standardEmptyLabel =
-    standardFilter === "ALL" ? "全部" : toStandardOrderStatusLabel(standardFilter);
+    standardShippingFilter !== "ALL"
+      ? toShippingStatusLabel(standardShippingFilter)
+      : standardFilter === "ALL"
+        ? "全部"
+        : toStandardOrderStatusLabel(standardFilter);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,6 +173,7 @@ export default function App() {
       setCurrentSearchName(normalized);
       setCurrentPage("results");
       setStandardFilter("ALL");
+      setStandardShippingFilter("ALL");
       setPreorderItemFilter("ALL");
       setPreorderShippingFilter("ALL");
       setSelectedQuickOrderIds([]);
@@ -406,25 +417,23 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mb-8 overflow-x-auto pb-4 hide-scrollbar">
-                  <div className="mb-2 px-1 text-base font-black text-[#2C1E16]">
-                    出貨狀態
-                  </div>
-                  <div className="flex gap-3 min-w-max px-1">
+                <div className="mb-8 max-w-xs">
+                  <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
+                    出貨進度
+                  </label>
+                  <select
+                    value={preorderShippingFilter}
+                    onChange={(event) =>
+                      setPreorderShippingFilter(event.target.value as ShippingStatusCode | "ALL")
+                    }
+                    className="w-full border-2 border-[#2C1E16] bg-white px-4 py-2 font-black text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] focus:outline-none"
+                  >
                     {PREORDER_SHIPPING_FILTERS.map((status) => (
-                      <button
-                        key={status.key}
-                        onClick={() => setPreorderShippingFilter(status.key)}
-                        className={`px-5 py-2 font-black border-2 border-[#2C1E16] transition-all ${
-                          preorderShippingFilter === status.key
-                            ? "bg-[#BC4A3C] text-[#EBE3CC] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.3)] translate-y-[2px] translate-x-[2px]"
-                            : "bg-white text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] hover:bg-[#F5F0E6] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-[3px_3px_0px_#2C1E16]"
-                        }`}
-                      >
+                      <option key={status.key} value={status.key}>
                         {status.label}
-                      </button>
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
 
                 {filteredPreorderOrders.length > 0 ? (
@@ -453,7 +462,10 @@ export default function App() {
                   {/*</span>*/}
                 </div>
 
-                <div className="mb-8 overflow-x-auto pb-4 hide-scrollbar">
+                <div className="mb-4 overflow-x-auto pb-2 hide-scrollbar">
+                  <div className="mb-2 px-1 text-base font-black text-[#2C1E16]">
+                    商品貨況
+                  </div>
                   <div className="flex gap-3 min-w-max px-1">
                     {STANDARD_STATUS_FILTERS.map((status) => (
                       <button
@@ -469,6 +481,25 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="mb-8 max-w-xs">
+                  <label className="mb-2 block px-1 text-base font-black text-[#2C1E16]">
+                    出貨進度
+                  </label>
+                  <select
+                    value={standardShippingFilter}
+                    onChange={(event) =>
+                      setStandardShippingFilter(event.target.value as ShippingStatusCode | "ALL")
+                    }
+                    className="w-full border-2 border-[#2C1E16] bg-white px-4 py-2 font-black text-[#2C1E16] shadow-[4px_4px_0px_#2C1E16] focus:outline-none"
+                  >
+                    {PREORDER_SHIPPING_FILTERS.map((status) => (
+                      <option key={status.key} value={status.key}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {filteredStandardOrders.length > 0 ? (
@@ -517,7 +548,7 @@ function hasQuickOrderItems(order: OrderView): boolean {
 }
 
 function isQuickOrderItem(item: OrderView["items"][number]): boolean {
-  return item.statusCode === "PREORDER_ARRIVED" || item.statusCode === "ARRIVED";
+  return item.shippingStatusCode === "READY_TO_SHIP";
 }
 
 function sortOrdersByGroupDateDesc(orders: OrderView[]): OrderView[] {

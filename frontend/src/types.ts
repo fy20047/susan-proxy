@@ -44,7 +44,7 @@ export type StandardOrderStatus =
   | "已登記"
   | "待匯定"
   | "待購入"
-  | "運送中"
+  | "轉送中"
   | "已抵台待出貨"
   | "已出貨";
 
@@ -57,7 +57,7 @@ export type PreorderItemStatusLabel =
   | "已抵台"
   | "已出貨";
 
-export type ShippingStatusLabel = "尚未抵台" | "可下單等待出貨" | "已出貨";
+export type ShippingStatusLabel = "未抵台" | "已抵台待出貨" | "已出貨";
 
 export type ItemStatusLabel = StandardOrderStatus | PreorderItemStatusLabel;
 export type SummaryStatusCode = StandardItemStatusCode | ShippingStatusCode;
@@ -66,6 +66,7 @@ export type SummaryStatusLabel = StandardOrderStatus | ShippingStatusLabel;
 export type ApiOrderItem = {
   id: number;
   orderSn?: string;
+  orderRank?: string;
   queued?: boolean;
   checkedIn?: boolean;
   balanceDueDate?: string;
@@ -80,6 +81,7 @@ export type ApiOrderItem = {
   quantity?: number;
   jpyPrice?: number;
   itemStatus?: ItemStatusCode;
+  shippingStatus?: ShippingStatusCode;
 };
 
 export type ApiOrderGroup = {
@@ -99,6 +101,7 @@ export type OrderItemView = {
   id: number;
   name: string;
   orderSn?: string;
+  orderRank?: string;
   queued?: boolean;
   checkedIn?: boolean;
   quantity: number;

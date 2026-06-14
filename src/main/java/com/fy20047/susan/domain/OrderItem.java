@@ -45,6 +45,9 @@ public class OrderItem {
     @Column(name = "order_sn", length = 64)
     private String orderSn;
 
+    @Column(name = "order_rank", length = 64)
+    private String orderRank;
+
     // 是否報到（勾選代表已報到）
     @Column(name = "is_checked_in")
     private Boolean checkedIn = false;
@@ -99,4 +102,8 @@ public class OrderItem {
     @Enumerated(EnumType.STRING)
     @Column(name = "item_status", length = 32)
     private ItemStatus itemStatus;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "shipping_status", length = 32)
+    private ShippingStatus shippingStatus;
 }

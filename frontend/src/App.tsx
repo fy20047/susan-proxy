@@ -269,7 +269,7 @@ export default function App() {
   }, [quickOrderEligibleOrders, selectedQuickOrderIds]);
 
   const selectedQuickOrderBalance = useMemo(
-    () => selectedQuickOrders.reduce((sum, order) => sum + order.balanceAmount, 0),
+    () => selectedQuickOrders.reduce((sum, order) => sum + getQuickOrderUnpaidBalance(order), 0),
     [selectedQuickOrders]
   );
   const hasCheckedQuickOrder = selectedQuickOrderIds.length > 0;
@@ -1400,6 +1400,15 @@ function hasQuickOrderItems(order: OrderView): boolean {
 
 function isQuickOrderItem(item: OrderView["items"][number]): boolean {
   return item.shippingStatusCode === "READY_TO_SHIP";
+}
+
+function getQuickOrderUnpaidBalance(order: OrderView): number {
+  return order.items.reduce((sum, item) => {
+    if (!isQuickOrderItem(item) || item.isBalancePaid) {
+      return sum;
+    }
+    return sum + item.balanceAmount;
+  }, 0);
 }
 
 function sortOrdersByGroupDateDesc(orders: OrderView[]): OrderView[] {

@@ -43,3 +43,17 @@ body {
 .animate-slide-in {
   animation: slide-in-top 0.2s ease-out;
 }
+
+@keyframes copy-feedback {
+  0%,
+  18% {
+    background-color: #d9a036;
+  }
+  100% {
+    background-color: #ffffff;
+  }
+}
+
+.animate-copy-feedback {
+  animation: copy-feedback 0.8s ease-out;
+}

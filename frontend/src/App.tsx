@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
+  CheckCheck,
   CheckCircle2,
   Copy,
   ExternalLink,
@@ -49,6 +50,7 @@ import logo from "./image/logo1.png";
 import icon from "./image/icon.png";
 
 const SELLER_STORE_URL = "https://myship.7-11.com.tw/general/detail/GM2602284842246";
+const QUICK_DEPOSIT_URL = "https://lin.ee/nZgljun";
 const ADMIN_SESSION_STORAGE_KEY = "susan-admin-session";
 const QUICK_ORDER_BAR_ANIMATION_MS = 320;
 const QUICK_ORDER_BAR_ENTER_DELAY_MS = 40;
@@ -158,9 +160,19 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [pageViews, setPageViews] = useState<PageViewStats | null>(null);
   const [selectedQuickOrderIds, setSelectedQuickOrderIds] = useState<number[]>([]);
+  const initialQuickOrderIdRef = useRef<number | null>(null);
+  const [isQuickOrderBulkSelectionActive, setIsQuickOrderBulkSelectionActive] = useState(false);
   const [quickOrderMessage, setQuickOrderMessage] = useState<string | null>(null);
+  const [isQuickOrderCopyFeedbackActive, setIsQuickOrderCopyFeedbackActive] = useState(false);
+  const [selectedPendingPaymentIds, setSelectedPendingPaymentIds] = useState<number[]>([]);
+  const initialPendingPaymentIdRef = useRef<number | null>(null);
+  const [isPendingPaymentBulkSelectionActive, setIsPendingPaymentBulkSelectionActive] = useState(false);
+  const [pendingPaymentMessage, setPendingPaymentMessage] = useState<string | null>(null);
+  const [isPendingPaymentCopyFeedbackActive, setIsPendingPaymentCopyFeedbackActive] = useState(false);
   const [isQuickOrderBarMounted, setIsQuickOrderBarMounted] = useState(false);
   const [isQuickOrderBarVisible, setIsQuickOrderBarVisible] = useState(false);
+  const mobileBatchPanelsRef = useRef<HTMLDivElement>(null);
+  const [activeMobileBatchPanelIndex, setActiveMobileBatchPanelIndex] = useState(0);
 
   useEffect(() => {
     recordPageView()
@@ -272,19 +284,91 @@ export default function App() {
     () => selectedQuickOrders.reduce((sum, order) => sum + getQuickOrderUnpaidBalance(order), 0),
     [selectedQuickOrders]
   );
-  const hasCheckedQuickOrder = selectedQuickOrderIds.length > 0;
+  const allQuickOrdersSelected =
+    quickOrderEligibleOrders.length > 0 &&
+    quickOrderEligibleOrders.every((order) => selectedQuickOrderIds.includes(order.id));
   const showQuickOrderPanel =
-    currentPage === "results" && hasCheckedQuickOrder && selectedQuickOrders.length > 0;
+    currentPage === "results" && selectedQuickOrders.length > 0;
+
+  const pendingPaymentEligibleOrders = useMemo(
+    () =>
+      orders.reduce<OrderView[]>((acc, order) => {
+        const items = order.items.filter(isPendingPaymentItem);
+        if (items.length) {
+          acc.push(rebuildOrderView(order, items));
+        }
+        return acc;
+      }, []),
+    [orders]
+  );
+
+  const selectedPendingPayments = useMemo(() => {
+    const selectedIds = new Set(selectedPendingPaymentIds);
+    return pendingPaymentEligibleOrders.filter((order) => selectedIds.has(order.id));
+  }, [pendingPaymentEligibleOrders, selectedPendingPaymentIds]);
+
+  const selectedPendingPaymentAmount = useMemo(
+    () =>
+      selectedPendingPayments.reduce(
+        (sum, order) => sum + order.depositAmount,
+        0
+      ),
+    [selectedPendingPayments]
+  );
+  const allPendingPaymentsSelected =
+    pendingPaymentEligibleOrders.length > 0 &&
+    pendingPaymentEligibleOrders.every((order) =>
+      selectedPendingPaymentIds.includes(order.id)
+    );
+  const showPendingPaymentPanel =
+    currentPage === "results" && selectedPendingPayments.length > 0;
+  const showBatchOrderPanel = showQuickOrderPanel || showPendingPaymentPanel;
+  const showBothBatchOrderPanels = showQuickOrderPanel && showPendingPaymentPanel;
 
   useEffect(() => {
     const selectableIds = new Set(quickOrderEligibleOrders.map((order) => order.id));
     setSelectedQuickOrderIds((prev) => prev.filter((id) => selectableIds.has(id)));
+    if (
+      initialQuickOrderIdRef.current !== null &&
+      !selectableIds.has(initialQuickOrderIdRef.current)
+    ) {
+      initialQuickOrderIdRef.current = null;
+    }
   }, [quickOrderEligibleOrders]);
+
+  useEffect(() => {
+    const selectableIds = new Set(pendingPaymentEligibleOrders.map((order) => order.id));
+    setSelectedPendingPaymentIds((prev) => prev.filter((id) => selectableIds.has(id)));
+    if (
+      initialPendingPaymentIdRef.current !== null &&
+      !selectableIds.has(initialPendingPaymentIdRef.current)
+    ) {
+      initialPendingPaymentIdRef.current = null;
+    }
+  }, [pendingPaymentEligibleOrders]);
+
+  useEffect(() => {
+    if (!allQuickOrdersSelected) {
+      setIsQuickOrderBulkSelectionActive(false);
+    }
+  }, [allQuickOrdersSelected]);
+
+  useEffect(() => {
+    if (!allPendingPaymentsSelected) {
+      setIsPendingPaymentBulkSelectionActive(false);
+    }
+  }, [allPendingPaymentsSelected]);
+
+  useEffect(() => {
+    if (!showBothBatchOrderPanels) {
+      setActiveMobileBatchPanelIndex(0);
+    }
+  }, [showBothBatchOrderPanels]);
 
   useEffect(() => {
     let timeoutId: number | null = null;
 
-    if (showQuickOrderPanel) {
+    if (showBatchOrderPanel) {
       setIsQuickOrderBarVisible(false);
       setIsQuickOrderBarMounted(true);
       timeoutId = window.setTimeout(() => {
@@ -302,7 +386,7 @@ export default function App() {
         window.clearTimeout(timeoutId);
       }
     };
-  }, [showQuickOrderPanel]);
+  }, [showBatchOrderPanel]);
 
   const lastUpdatedLabel = useMemo(() => {
     const timestamps = orders
@@ -583,7 +667,15 @@ export default function App() {
       setStandardFilter("ALL");
       setPreorderItemFilter("ALL");
       setSelectedQuickOrderIds([]);
+      initialQuickOrderIdRef.current = null;
+      setIsQuickOrderBulkSelectionActive(false);
       setQuickOrderMessage(null);
+      setIsQuickOrderCopyFeedbackActive(false);
+      setSelectedPendingPaymentIds([]);
+      initialPendingPaymentIdRef.current = null;
+      setIsPendingPaymentBulkSelectionActive(false);
+      setPendingPaymentMessage(null);
+      setIsPendingPaymentCopyFeedbackActive(false);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "搜尋發生錯誤，請稍後再試。";
@@ -595,12 +687,35 @@ export default function App() {
 
   const handleQuickOrderSelectChange = (orderId: number, checked: boolean) => {
     setQuickOrderMessage(null);
-    setSelectedQuickOrderIds((prev) => {
-      if (checked) {
-        return prev.includes(orderId) ? prev : [...prev, orderId];
-      }
-      return prev.filter((id) => id !== orderId);
-    });
+    if (checked && selectedQuickOrderIds.length === 0) {
+      initialQuickOrderIdRef.current = orderId;
+    }
+    if (!checked && initialQuickOrderIdRef.current === orderId) {
+      initialQuickOrderIdRef.current =
+        selectedQuickOrderIds.find((id) => id !== orderId) ?? null;
+    }
+    const nextSelectedIds = checked
+      ? selectedQuickOrderIds.includes(orderId)
+        ? selectedQuickOrderIds
+        : [...selectedQuickOrderIds, orderId]
+      : selectedQuickOrderIds.filter((id) => id !== orderId);
+    setSelectedQuickOrderIds(nextSelectedIds);
+    setIsQuickOrderBulkSelectionActive(
+      nextSelectedIds.length > 0 &&
+      nextSelectedIds.length === quickOrderEligibleOrders.length
+    );
+  };
+
+  const handleToggleAllQuickOrders = () => {
+    setQuickOrderMessage(null);
+    if (isQuickOrderBulkSelectionActive) {
+      const retainedId = initialQuickOrderIdRef.current ?? selectedQuickOrderIds[0];
+      setSelectedQuickOrderIds(typeof retainedId === "number" ? [retainedId] : []);
+      setIsQuickOrderBulkSelectionActive(false);
+      return;
+    }
+    setSelectedQuickOrderIds(quickOrderEligibleOrders.map((order) => order.id));
+    setIsQuickOrderBulkSelectionActive(true);
   };
 
   const handleCopyQuickOrderDetails = async () => {
@@ -611,8 +726,10 @@ export default function App() {
     const summaryText = selectedQuickOrders.map((order) => order.groupName).join("\n");
     try {
       await navigator.clipboard.writeText(summaryText);
-      setQuickOrderMessage(`已複製 ${selectedQuickOrders.length} 筆團名。`);
+      setQuickOrderMessage(null);
+      setIsQuickOrderCopyFeedbackActive(true);
     } catch {
+      setIsQuickOrderCopyFeedbackActive(false);
       setQuickOrderMessage("複製失敗，請確認瀏覽器是否允許剪貼簿權限。");
     }
   };
@@ -624,6 +741,96 @@ export default function App() {
 
     setQuickOrderMessage(null);
     window.open(SELLER_STORE_URL, "_blank", "noopener,noreferrer");
+  };
+
+  const handlePendingPaymentSelectChange = (orderId: number, checked: boolean) => {
+    setPendingPaymentMessage(null);
+    if (checked && selectedPendingPaymentIds.length === 0) {
+      initialPendingPaymentIdRef.current = orderId;
+    }
+    if (!checked && initialPendingPaymentIdRef.current === orderId) {
+      initialPendingPaymentIdRef.current =
+        selectedPendingPaymentIds.find((id) => id !== orderId) ?? null;
+    }
+    const nextSelectedIds = checked
+      ? selectedPendingPaymentIds.includes(orderId)
+        ? selectedPendingPaymentIds
+        : [...selectedPendingPaymentIds, orderId]
+      : selectedPendingPaymentIds.filter((id) => id !== orderId);
+    setSelectedPendingPaymentIds(nextSelectedIds);
+    setIsPendingPaymentBulkSelectionActive(
+      nextSelectedIds.length > 0 &&
+      nextSelectedIds.length === pendingPaymentEligibleOrders.length
+    );
+  };
+
+  const handleToggleAllPendingPayments = () => {
+    setPendingPaymentMessage(null);
+    if (isPendingPaymentBulkSelectionActive) {
+      const retainedId =
+        initialPendingPaymentIdRef.current ?? selectedPendingPaymentIds[0];
+      setSelectedPendingPaymentIds(typeof retainedId === "number" ? [retainedId] : []);
+      setIsPendingPaymentBulkSelectionActive(false);
+      return;
+    }
+    setSelectedPendingPaymentIds(
+      pendingPaymentEligibleOrders.map((order) => order.id)
+    );
+    setIsPendingPaymentBulkSelectionActive(true);
+  };
+
+  const handleCopyPendingPaymentDetails = async () => {
+    if (!selectedPendingPayments.length) {
+      return;
+    }
+
+    const summaryText = selectedPendingPayments
+      .map(
+        (order) =>
+          `${order.groupName}：NT$ ${order.depositAmount.toLocaleString()}`
+      )
+      .concat(`以上總額 NT$ ${selectedPendingPaymentAmount.toLocaleString()}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(summaryText);
+      setPendingPaymentMessage(null);
+      setIsPendingPaymentCopyFeedbackActive(true);
+    } catch {
+      setIsPendingPaymentCopyFeedbackActive(false);
+      setPendingPaymentMessage("複製失敗，請確認瀏覽器是否允許剪貼簿權限。");
+    }
+  };
+
+  const handlePendingPaymentSubmit = () => {
+    if (!selectedPendingPayments.length) {
+      return;
+    }
+
+    setPendingPaymentMessage(null);
+    window.open(QUICK_DEPOSIT_URL, "_blank", "noopener,noreferrer");
+  };
+
+  const handleMobileBatchPanelsScroll = () => {
+    const container = mobileBatchPanelsRef.current;
+    if (!container) {
+      return;
+    }
+
+    const panels = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-batch-panel]")
+    );
+    if (panels.length < 2) {
+      return;
+    }
+
+    const activeIndex = panels.reduce((closestIndex, panel, index) => {
+      const currentDistance = Math.abs(panel.offsetLeft - container.scrollLeft);
+      const closestDistance = Math.abs(
+        panels[closestIndex].offsetLeft - container.scrollLeft
+      );
+      return currentDistance < closestDistance ? index : closestIndex;
+    }, 0);
+    setActiveMobileBatchPanelIndex(activeIndex);
   };
 
   return (
@@ -761,7 +968,11 @@ export default function App() {
         <div className="flex-1">
           <div
             className={`max-w-4xl mx-auto px-4 pt-8 md:px-8 md:pt-8 ${
-              isQuickOrderBarMounted ? "pb-64 md:pb-40" : "pb-4 md:pb-8"
+              isQuickOrderBarMounted
+                ? showBothBatchOrderPanels
+                  ? "pb-64 md:pb-[22rem]"
+                  : "pb-64 md:pb-40"
+                : "pb-4 md:pb-8"
             }`}
           >
             <div className="flex flex-row justify-between items-end mb-8 border-b-4 border-[#2C1E16] pb-4 relative w-full">
@@ -839,6 +1050,9 @@ export default function App() {
                       quickOrderSelectable={hasQuickOrderItems(order)}
                       quickOrderSelected={selectedQuickOrderIds.includes(order.id)}
                       onQuickOrderSelectChange={handleQuickOrderSelectChange}
+                      pendingPaymentSelectable={hasPendingPaymentItems(order)}
+                      pendingPaymentSelected={selectedPendingPaymentIds.includes(order.id)}
+                      onPendingPaymentSelectChange={handlePendingPaymentSelectChange}
                     />
                   ))
                 ) : (
@@ -886,6 +1100,9 @@ export default function App() {
                       quickOrderSelectable={hasQuickOrderItems(order)}
                       quickOrderSelected={selectedQuickOrderIds.includes(order.id)}
                       onQuickOrderSelectChange={handleQuickOrderSelectChange}
+                      pendingPaymentSelectable={hasPendingPaymentItems(order)}
+                      pendingPaymentSelected={selectedPendingPaymentIds.includes(order.id)}
+                      onPendingPaymentSelectChange={handlePendingPaymentSelectChange}
                     />
                   ))
                 ) : (
@@ -905,43 +1122,158 @@ export default function App() {
               : "translate-y-[110%] opacity-0 pointer-events-none"
           }`}
         >
-          <div className="relative mx-auto max-w-4xl bg-[#F5F0E6] border-4 border-[#2C1E16] p-5 md:bg-white md:p-5 shadow-[4px_4px_0px_#2C1E16]">
-            <div className="absolute inset-x-0 top-0 h-3 bg-[#D9A036] md:hidden" />
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1">
-                <p className="text-lg font-black text-[#2C1E16]">快速下單</p>
-                <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
-                  已選 {selectedQuickOrders.length} 筆，可出貨尾款合計 NT$ {selectedQuickOrderBalance.toLocaleString()}
-                </p>
-                <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
-                  勾選要一起出貨的團名後，可直接複製明細並前往賣貨便賣場。
-                </p>
-                {quickOrderMessage && (
-                  <p className="text-sm font-bold text-[#BC4A3C]">{quickOrderMessage}</p>
-                )}
-              </div>
+          <div className="relative mx-auto max-w-4xl">
+            <div
+              ref={mobileBatchPanelsRef}
+              onScroll={handleMobileBatchPanelsScroll}
+              className="hide-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto md:flex-col md:overflow-visible"
+            >
+              {showPendingPaymentPanel && (
+                <section
+                  data-batch-panel="pending-payment"
+                  className="relative w-full shrink-0 snap-center bg-[#F5F0E6] border-4 border-[#2C1E16] p-5 shadow-[4px_4px_0px_#2C1E16] md:bg-white"
+                  aria-label="快速匯定批次操作"
+                >
+                  <div className="absolute inset-x-0 top-0 h-3 bg-[#5B8266] md:hidden" />
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-center">
+                    <div className="space-y-1">
+                      <p className="text-lg font-black text-[#2C1E16]">快速匯定</p>
+                      <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
+                        已勾選 {selectedPendingPayments.length} 團，待付定金合計 NT$ {selectedPendingPaymentAmount.toLocaleString()}
+                      </p>
+                      <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
+                        記住待付定金合計後，點複製匯定明細，再點快速匯定回到官賴；匯款後回填匯定明細。
+                      </p>
+                      {pendingPaymentMessage && (
+                        <p className="text-sm font-bold text-[#BC4A3C]">{pendingPaymentMessage}</p>
+                      )}
+                    </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  onClick={handleCopyQuickOrderDetails}
-                  disabled={!selectedQuickOrders.length}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                    <div className="grid w-full grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleToggleAllPendingPayments}
+                        aria-pressed={isPendingPaymentBulkSelectionActive}
+                        className={`flex h-12 min-w-0 items-center justify-center gap-1 px-1 text-[11px] leading-tight border-2 border-[#2C1E16] font-black transition-colors sm:gap-2 sm:px-3 sm:text-sm ${
+                          isPendingPaymentBulkSelectionActive
+                            ? "bg-[#D9A036] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.25)]"
+                            : "bg-[#EBE3CC] shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6]"
+                        }`}
+                      >
+                        <CheckCheck size={18} className="hidden sm:block" />
+                        <span className="whitespace-nowrap">{isPendingPaymentBulkSelectionActive ? "取消全選" : "一鍵快速匯定"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCopyPendingPaymentDetails}
+                        onAnimationEnd={() => setIsPendingPaymentCopyFeedbackActive(false)}
+                        disabled={!selectedPendingPayments.length}
+                        className={`flex h-12 min-w-0 items-center justify-center gap-1 px-1 text-[11px] leading-tight border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none sm:gap-2 sm:px-3 sm:text-sm ${
+                          isPendingPaymentCopyFeedbackActive
+                            ? "animate-copy-feedback"
+                            : "bg-white hover:bg-[#F5F0E6]"
+                        }`}
+                      >
+                        <Copy size={18} className="hidden sm:block" />
+                        <span className="whitespace-nowrap">複製匯定明細</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePendingPaymentSubmit}
+                        disabled={!selectedPendingPayments.length}
+                        className="flex h-12 min-w-0 items-center justify-center gap-1 px-1 text-[11px] bg-[#5B8266] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#496B53] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none sm:gap-2 sm:px-3 sm:text-sm"
+                      >
+                        <ExternalLink size={18} className="hidden sm:block" />
+                        <span className="whitespace-nowrap">快速匯定</span>
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {showQuickOrderPanel && (
+                <section
+                  data-batch-panel="quick-order"
+                  className="relative w-full shrink-0 snap-center bg-[#F5F0E6] border-4 border-[#2C1E16] p-5 shadow-[4px_4px_0px_#2C1E16] md:bg-white"
+                  aria-label="快速下單批次操作"
                 >
-                  <Copy size={18} />
-                  <span>複製明細</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleQuickOrderSubmit}
-                  disabled={!selectedQuickOrders.length}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                >
-                  <ExternalLink size={18} />
-                  <span>下單</span>
-                </button>
-              </div>
+                  <div className="absolute inset-x-0 top-0 h-3 bg-[#D9A036] md:hidden" />
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-center">
+                    <div className="space-y-1">
+                      <p className="text-lg font-black text-[#2C1E16]">快速下單</p>
+                      <p className="text-sm md:text-base font-bold text-[#2A5C5B]">
+                        已選 {selectedQuickOrders.length} 筆，可出貨尾款合計 NT$ {selectedQuickOrderBalance.toLocaleString()}
+                      </p>
+                      <p className="text-xs md:text-sm font-bold text-[#2C1E16]/70">
+                        勾選要一起出貨的團名後，可直接複製明細並點擊快速下單按鈕前往賣貨便賣場。
+                      </p>
+                      {quickOrderMessage && (
+                        <p className="text-sm font-bold text-[#BC4A3C]">{quickOrderMessage}</p>
+                      )}
+                    </div>
+
+                    <div className="grid w-full grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleToggleAllQuickOrders}
+                        aria-pressed={isQuickOrderBulkSelectionActive}
+                        className={`flex h-12 min-w-0 items-center justify-center gap-1 px-1 text-[11px] leading-tight border-2 border-[#2C1E16] font-black transition-colors sm:gap-2 sm:px-3 sm:text-sm ${
+                          isQuickOrderBulkSelectionActive
+                            ? "bg-[#D9A036] shadow-[inset_3px_3px_0px_rgba(0,0,0,0.25)]"
+                            : "bg-[#EBE3CC] shadow-[3px_3px_0px_#2C1E16] hover:bg-[#F5F0E6]"
+                        }`}
+                      >
+                        <CheckCheck size={18} className="hidden sm:block" />
+                        <span className="whitespace-nowrap">{isQuickOrderBulkSelectionActive ? "取消全選" : "一鍵快速下單"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCopyQuickOrderDetails}
+                        onAnimationEnd={() => setIsQuickOrderCopyFeedbackActive(false)}
+                        disabled={!selectedQuickOrders.length}
+                        className={`flex h-12 min-w-0 items-center justify-center gap-1 px-1 text-[11px] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none sm:gap-2 sm:px-3 sm:text-sm ${
+                          isQuickOrderCopyFeedbackActive
+                            ? "animate-copy-feedback"
+                            : "bg-white hover:bg-[#F5F0E6]"
+                        }`}
+                      >
+                        <Copy size={18} className="hidden sm:block" />
+                        <span className="whitespace-nowrap">複製下單明細</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleQuickOrderSubmit}
+                        disabled={!selectedQuickOrders.length}
+                        className="flex h-12 min-w-0 items-center justify-center gap-1 px-1 text-[11px] bg-[#BC4A3C] text-[#EBE3CC] border-2 border-[#2C1E16] font-black shadow-[3px_3px_0px_#2C1E16] hover:bg-[#A33E33] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none sm:gap-2 sm:px-3 sm:text-sm"
+                      >
+                        <ExternalLink size={18} className="hidden sm:block" />
+                        <span className="whitespace-nowrap">快速下單</span>
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )}
             </div>
+
+            {showBothBatchOrderPanels && (
+              <div
+                className="mt-2 mb-3 flex items-center justify-center gap-2 md:hidden"
+                aria-label="批次操作頁面位置"
+              >
+                {[0, 1].map((index) => (
+                  <span
+                    key={index}
+                    className={`h-2.5 w-2.5 rounded-full border-2 border-[#4B4B4B] ${
+                      activeMobileBatchPanelIndex === index
+                        ? "bg-[#4B4B4B]"
+                        : "bg-transparent"
+                    }`}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+            )}
+
           </div>
         </div>
       )}
@@ -1400,6 +1732,17 @@ function hasQuickOrderItems(order: OrderView): boolean {
 
 function isQuickOrderItem(item: OrderView["items"][number]): boolean {
   return item.shippingStatusCode === "READY_TO_SHIP";
+}
+
+function isPendingPaymentItem(item: OrderView["items"][number]): boolean {
+  return (
+    item.statusCode === "PENDING_DEPOSIT" ||
+    item.statusCode === "PREORDER_PENDING_DEPOSIT"
+  );
+}
+
+function hasPendingPaymentItems(order: OrderView): boolean {
+  return order.items.some(isPendingPaymentItem);
 }
 
 function getQuickOrderUnpaidBalance(order: OrderView): number {

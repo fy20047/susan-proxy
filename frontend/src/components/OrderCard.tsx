@@ -3,12 +3,18 @@ import { ChevronDown, ChevronUp, Gift, Package } from "lucide-react";
 import { OrderView } from "../types";
 import { getItemStatusClass, getSummaryStatusClass } from "../status";
 
+// eslint-disable-next-line no-unused-vars
+type SelectionChangeHandler = (orderId: number, checked: boolean) => void;
+
 type OrderCardProps = {
   order: OrderView;
   showStatus: boolean;
   quickOrderSelectable?: boolean;
   quickOrderSelected?: boolean;
-  onQuickOrderSelectChange?: (orderId: number, checked: boolean) => void;
+  onQuickOrderSelectChange?: SelectionChangeHandler;
+  pendingPaymentSelectable?: boolean;
+  pendingPaymentSelected?: boolean;
+  onPendingPaymentSelectChange?: SelectionChangeHandler;
 };
 
 export default function OrderCard({
@@ -16,7 +22,10 @@ export default function OrderCard({
   showStatus,
   quickOrderSelectable = false,
   quickOrderSelected = false,
-  onQuickOrderSelectChange
+  onQuickOrderSelectChange,
+  pendingPaymentSelectable = false,
+  pendingPaymentSelected = false,
+  onPendingPaymentSelectChange
 }: OrderCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -33,6 +42,10 @@ export default function OrderCard({
 
   const handleQuickOrderChange = (event: ChangeEvent<HTMLInputElement>) => {
     onQuickOrderSelectChange?.(order.id, event.target.checked);
+  };
+
+  const handlePendingPaymentChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onPendingPaymentSelectChange?.(order.id, event.target.checked);
   };
 
   return (
@@ -58,7 +71,7 @@ export default function OrderCard({
           </div>
         </div>
 
-        <div className="flex items-center justify-between w-full md:w-auto gap-4 border-t-2 md:border-t-0 border-dashed border-[#2C1E16] pt-3 md:pt-0 mt-2 md:mt-0">
+        <div className="flex flex-wrap items-center justify-end w-full md:w-auto gap-2 border-t-2 md:border-t-0 border-dashed border-[#2C1E16] pt-3 md:pt-0 mt-2 md:mt-0 md:flex-nowrap">
           {quickOrderSelectable && (
             <label
               className="flex items-center gap-2 px-3 py-1 bg-[#EBE3CC] border-2 border-[#2C1E16] text-sm font-bold text-[#2C1E16] shadow-[2px_2px_0px_#2C1E16]"
@@ -72,6 +85,21 @@ export default function OrderCard({
                 aria-label={`選取 ${order.groupName} 進行快速下單`}
               />
               <span>快速下單</span>
+            </label>
+          )}
+          {pendingPaymentSelectable && (
+            <label
+              className="flex items-center gap-2 px-3 py-1 bg-[#EBE3CC] border-2 border-[#2C1E16] text-sm font-bold text-[#2C1E16] shadow-[2px_2px_0px_#2C1E16]"
+              onClick={handleQuickOrderClick}
+            >
+              <input
+                type="checkbox"
+                checked={pendingPaymentSelected}
+                onChange={handlePendingPaymentChange}
+                className="h-4 w-4 accent-[#5B8266]"
+                aria-label={`選取 ${order.groupName} 進行快速匯定`}
+              />
+              <span>快速匯定</span>
             </label>
           )}
           {showStatus && (

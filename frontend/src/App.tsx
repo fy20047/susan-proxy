@@ -784,13 +784,22 @@ export default function App() {
       return;
     }
 
-    const summaryText = selectedPendingPayments
-      .map(
-        (order) =>
-          `${order.groupName}：NT$ ${order.depositAmount.toLocaleString()}`
-      )
-      .concat(`以上總額 NT$ ${selectedPendingPaymentAmount.toLocaleString()}`)
+    const paymentItemsText = selectedPendingPayments
+      .map((order) => order.groupName)
       .join("\n");
+    const selectedPendingPaymentTotalAmount = selectedPendingPayments.reduce(
+      (sum, order) => sum + order.totalAmount,
+      0
+    );
+    const summaryText = `付款完成後請回傳【轉帳完成畫面截圖】
+並填寫：
+付款項目：
+${paymentItemsText}
+
+喊單總額：NT$ ${selectedPendingPaymentTotalAmount.toLocaleString()}
+待付定金：NT$ ${selectedPendingPaymentAmount.toLocaleString()}
+轉帳金額：
+末五碼：`;
     try {
       await navigator.clipboard.writeText(summaryText);
       setPendingPaymentMessage(null);

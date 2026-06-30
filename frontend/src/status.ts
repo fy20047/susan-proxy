@@ -43,8 +43,8 @@ export type PreorderItemFilter = {
 
 export const STANDARD_STATUS_FILTERS: StandardFilter[] = [
   { key: "ALL", label: "全部" },
-  { key: "UNPURCHASED", label: "尚未購入" },
   { key: "PENDING_PAYMENT", label: "待付款" },
+  { key: "UNPURCHASED", label: "尚未購入" },
   { key: "FORWARDING", label: "轉送中" },
   { key: "READY_TO_SHIP", label: "可出貨" },
   { key: "SHIPPED", label: "已出貨" }
@@ -52,8 +52,8 @@ export const STANDARD_STATUS_FILTERS: StandardFilter[] = [
 
 export const PREORDER_ITEM_FILTERS: PreorderItemFilter[] = [
   { key: "ALL", label: "全部" },
-  { key: "UNPURCHASED", label: "尚未購入" },
   { key: "PENDING_PAYMENT", label: "待付款" },
+  { key: "UNPURCHASED", label: "尚未購入" },
   { key: "WAITING_OFFICIAL", label: "等待官方出貨" },
   { key: "FORWARDING", label: "轉送中" },
   { key: "READY_TO_SHIP", label: "可出貨" },
@@ -62,8 +62,8 @@ export const PREORDER_ITEM_FILTERS: PreorderItemFilter[] = [
 
 const STANDARD_STATUS_PRIORITY: Record<StandardItemStatusCode, number> = {
   REGISTERED: 1,
-  PENDING_PURCHASE: 1,
-  PENDING_DEPOSIT: 2,
+  PENDING_DEPOSIT: 1,
+  PENDING_PURCHASE: 2,
   IN_TRANSIT: 3,
   ARRIVED: 4,
   SHIPPED: 5
@@ -71,8 +71,8 @@ const STANDARD_STATUS_PRIORITY: Record<StandardItemStatusCode, number> = {
 
 const PREORDER_STATUS_PRIORITY: Record<PreorderItemStatusCode, number> = {
   PREORDER_REGISTERED: 1,
-  PREORDER_PENDING_PURCHASE: 1,
-  PREORDER_PENDING_DEPOSIT: 2,
+  PREORDER_PENDING_DEPOSIT: 1,
+  PREORDER_PENDING_PURCHASE: 2,
   PREORDER_PURCHASED: 3,
   PREORDER_FORWARDING: 4,
   PREORDER_ARRIVED: 5,
@@ -86,12 +86,12 @@ export function isPreorderItemStatus(code?: ItemStatusCode): code is PreorderIte
 export function toItemStatusLabel(code?: ItemStatusCode): ItemStatusLabel {
   switch (code) {
     case "PENDING_DEPOSIT":
+    case "REGISTERED":
     case "PREORDER_PENDING_DEPOSIT":
+    case "PREORDER_REGISTERED":
       return "待付款";
     case "PENDING_PURCHASE":
-    case "REGISTERED":
     case "PREORDER_PENDING_PURCHASE":
-    case "PREORDER_REGISTERED":
       return "尚未購入";
     case "IN_TRANSIT":
     case "PREORDER_FORWARDING":
@@ -231,6 +231,7 @@ export function matchesPreorderFilters(
 function toStandardFilterKey(code: ItemStatusCode): StandardStatusFilterKey {
   switch (code) {
     case "PENDING_DEPOSIT":
+    case "REGISTERED":
       return "PENDING_PAYMENT";
     case "IN_TRANSIT":
       return "FORWARDING";
@@ -238,7 +239,6 @@ function toStandardFilterKey(code: ItemStatusCode): StandardStatusFilterKey {
       return "READY_TO_SHIP";
     case "SHIPPED":
       return "SHIPPED";
-    case "REGISTERED":
     case "PENDING_PURCHASE":
     default:
       return "UNPURCHASED";
@@ -248,6 +248,7 @@ function toStandardFilterKey(code: ItemStatusCode): StandardStatusFilterKey {
 function toPreorderFilterKey(code: ItemStatusCode): PreorderStatusFilterKey {
   switch (code) {
     case "PREORDER_PENDING_DEPOSIT":
+    case "PREORDER_REGISTERED":
       return "PENDING_PAYMENT";
     case "PREORDER_PURCHASED":
       return "WAITING_OFFICIAL";
@@ -257,7 +258,6 @@ function toPreorderFilterKey(code: ItemStatusCode): PreorderStatusFilterKey {
       return "READY_TO_SHIP";
     case "PREORDER_SHIPPED":
       return "SHIPPED";
-    case "PREORDER_REGISTERED":
     case "PREORDER_PENDING_PURCHASE":
     default:
       return "UNPURCHASED";

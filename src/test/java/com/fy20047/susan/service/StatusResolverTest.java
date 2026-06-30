@@ -37,11 +37,22 @@ class StatusResolverTest {
     }
 
     @Test
-    void shouldUsePendingPurchaseWhenStandardItemHasNameButIsNotPurchased() {
+    void shouldUsePendingPaymentWhenStandardItemHasNameButDepositIsMissing() {
         ItemStatus status = StatusResolver.determineStandard(
                 "測試商品",
                 false,
                 false,
+                ShippingStatus.NOT_ARRIVED);
+
+        assertEquals(ItemStatus.PENDING_DEPOSIT, status);
+    }
+
+    @Test
+    void shouldUsePendingPurchaseWhenStandardItemHasDepositButIsNotPurchased() {
+        ItemStatus status = StatusResolver.determineStandard(
+                "測試商品",
+                false,
+                true,
                 ShippingStatus.NOT_ARRIVED);
 
         assertEquals(ItemStatus.PENDING_PURCHASE, status);
@@ -102,6 +113,22 @@ class StatusResolverTest {
                 "測試商品", true, true, "已抵台待出貨", "", false));
         assertEquals(ItemStatus.PREORDER_SHIPPED, StatusResolver.determinePreorder(
                 "測試商品", true, true, "已出貨", "", false));
+    }
+
+    @Test
+    void shouldUsePendingPaymentWhenPreorderDepositIsMissing() {
+        ItemStatus status = StatusResolver.determinePreorder(
+                "測試商品", false, false, "", "", false);
+
+        assertEquals(ItemStatus.PREORDER_PENDING_DEPOSIT, status);
+    }
+
+    @Test
+    void shouldUsePendingPurchaseWhenPreorderHasDepositButIsNotPurchased() {
+        ItemStatus status = StatusResolver.determinePreorder(
+                "測試商品", false, true, "", "", false);
+
+        assertEquals(ItemStatus.PREORDER_PENDING_PURCHASE, status);
     }
 
     @Test

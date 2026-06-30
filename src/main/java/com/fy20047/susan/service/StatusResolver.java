@@ -47,11 +47,11 @@ public final class StatusResolver {
         if (isBlank(itemName)) {
             return ItemStatus.REGISTERED;
         }
-        if (!isPurchased) {
-            return ItemStatus.PENDING_PURCHASE;
-        }
         if (!isDepositPaid) {
             return ItemStatus.PENDING_DEPOSIT;
+        }
+        if (!isPurchased) {
+            return ItemStatus.PENDING_PURCHASE;
         }
         if (shippingStatus == ShippingStatus.SHIPPED) {
             return ItemStatus.SHIPPED;
@@ -159,11 +159,11 @@ public final class StatusResolver {
         if (isBlank(itemName)) {
             return ItemStatus.PREORDER_REGISTERED;
         }
-        if (!isPurchased) {
-            return ItemStatus.PREORDER_PENDING_PURCHASE;
-        }
         if (!isDepositPaid) {
             return ItemStatus.PREORDER_PENDING_DEPOSIT;
+        }
+        if (!isPurchased) {
+            return ItemStatus.PREORDER_PENDING_PURCHASE;
         }
         if (isShipped) {
             return ItemStatus.PREORDER_SHIPPED;

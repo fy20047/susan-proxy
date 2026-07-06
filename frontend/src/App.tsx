@@ -293,9 +293,9 @@ export default function App() {
   const pendingPaymentEligibleOrders = useMemo(
     () =>
       orders.reduce<OrderView[]>((acc, order) => {
-        const items = order.items.filter(isPendingPaymentItem);
-        if (items.length) {
-          acc.push(rebuildOrderView(order, items));
+        const pendingPaymentOrder = getPendingPaymentOrder(order);
+        if (pendingPaymentOrder) {
+          acc.push(pendingPaymentOrder);
         }
         return acc;
       }, []),
@@ -1754,7 +1754,17 @@ function isPendingPaymentItem(item: OrderView["items"][number]): boolean {
 }
 
 function hasPendingPaymentItems(order: OrderView): boolean {
-  return order.items.some(isPendingPaymentItem);
+  return getPendingPaymentOrder(order) !== null;
+}
+
+function getPendingPaymentOrder(order: OrderView): OrderView | null {
+  const items = order.items.filter(isPendingPaymentItem);
+  if (!items.length) {
+    return null;
+  }
+
+  const pendingPaymentOrder = rebuildOrderView(order, items);
+  return pendingPaymentOrder.pendingDepositAmount > 0 ? pendingPaymentOrder : null;
 }
 
 function getQuickOrderUnpaidBalance(order: OrderView): number {

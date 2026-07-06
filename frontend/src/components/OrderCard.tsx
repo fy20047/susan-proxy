@@ -97,12 +97,9 @@ export default function OrderCard({
                 checked={pendingPaymentSelected}
                 onChange={handlePendingPaymentChange}
                 className="h-4 w-4 accent-[#5B8266]"
-                aria-label={`選取 ${order.groupName} 進行快速匯定，待付定金 NT$ ${pendingDeposit.toLocaleString()}`}
+                aria-label={`選取 ${order.groupName} 進行快速匯定`}
               />
               <span className="whitespace-nowrap">快速匯定</span>
-              <span className="whitespace-nowrap text-[#2A5C5B]">
-                NT$ {pendingDeposit.toLocaleString()}
-              </span>
             </label>
           )}
           {showStatus && (

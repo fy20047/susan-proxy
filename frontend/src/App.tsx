@@ -310,7 +310,7 @@ export default function App() {
   const selectedPendingPaymentAmount = useMemo(
     () =>
       selectedPendingPayments.reduce(
-        (sum, order) => sum + order.depositAmount,
+        (sum, order) => sum + order.pendingDepositAmount,
         0
       ),
     [selectedPendingPayments]
@@ -785,7 +785,10 @@ export default function App() {
     }
 
     const paymentItemsText = selectedPendingPayments
-      .map((order) => order.groupName)
+      .map(
+        (order) =>
+          `${order.groupName}：NT$ ${order.pendingDepositAmount.toLocaleString()}`
+      )
       .join("\n");
     const selectedPendingPaymentTotalAmount = selectedPendingPayments.reduce(
       (sum, order) => sum + order.totalAmount,

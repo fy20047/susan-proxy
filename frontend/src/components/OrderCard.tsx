@@ -89,7 +89,7 @@ export default function OrderCard({
           )}
           {pendingPaymentSelectable && (
             <label
-              className="flex items-center gap-2 px-3 py-1 bg-[#EBE3CC] border-2 border-[#2C1E16] text-sm font-bold text-[#2C1E16] shadow-[2px_2px_0px_#2C1E16]"
+              className="flex min-w-0 items-center gap-2 px-3 py-1 bg-[#EBE3CC] border-2 border-[#2C1E16] text-sm font-bold text-[#2C1E16] shadow-[2px_2px_0px_#2C1E16]"
               onClick={handleQuickOrderClick}
             >
               <input
@@ -97,9 +97,12 @@ export default function OrderCard({
                 checked={pendingPaymentSelected}
                 onChange={handlePendingPaymentChange}
                 className="h-4 w-4 accent-[#5B8266]"
-                aria-label={`選取 ${order.groupName} 進行快速匯定`}
+                aria-label={`選取 ${order.groupName} 進行快速匯定，待付定金 NT$ ${pendingDeposit.toLocaleString()}`}
               />
-              <span>快速匯定</span>
+              <span className="whitespace-nowrap">快速匯定</span>
+              <span className="whitespace-nowrap text-[#2A5C5B]">
+                NT$ {pendingDeposit.toLocaleString()}
+              </span>
             </label>
           )}
           {showStatus && (

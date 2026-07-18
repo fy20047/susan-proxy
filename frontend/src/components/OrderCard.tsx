@@ -1,14 +1,13 @@
 import { ChangeEvent, MouseEvent, useState } from "react";
 import { ChevronDown, ChevronUp, Gift, Package } from "lucide-react";
 import { OrderView } from "../types";
-import { getItemStatusClass, getSummaryStatusClass } from "../status";
+import { getItemStatusClass } from "../status";
 
 // eslint-disable-next-line no-unused-vars
 type SelectionChangeHandler = (orderId: number, checked: boolean) => void;
 
 type OrderCardProps = {
   order: OrderView;
-  showStatus: boolean;
   quickOrderSelectable?: boolean;
   quickOrderSelected?: boolean;
   onQuickOrderSelectChange?: SelectionChangeHandler;
@@ -19,7 +18,6 @@ type OrderCardProps = {
 
 export default function OrderCard({
   order,
-  showStatus,
   quickOrderSelectable = false,
   quickOrderSelected = false,
   onQuickOrderSelectChange,
@@ -101,15 +99,6 @@ export default function OrderCard({
               />
               <span className="whitespace-nowrap">快速匯定</span>
             </label>
-          )}
-          {showStatus && (
-            <span
-              className={`px-3 py-1 font-bold border-2 border-[#2C1E16] text-sm md:text-base shadow-[2px_2px_0px_#2C1E16] ${getSummaryStatusClass(
-                order.summaryStatusCode
-              )}`}
-            >
-              {order.summaryStatus}
-            </span>
           )}
           <button className="p-1 bg-[#EBE3CC] border-2 border-[#2C1E16] hover:bg-[#D9A036] transition-colors flex-shrink-0">
             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}

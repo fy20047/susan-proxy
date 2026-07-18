@@ -91,8 +91,8 @@ class SheetSyncServiceTest {
     @Test
     void syncFromCsvUsesShippingProgressForReadyToShipStatus() throws IOException {
         OrderItem item = syncSingleItem(
-                List.of(PURCHASED, CHECKED_IN, SHIPPING_PROGRESS),
-                List.of("TRUE", "2026-07-01", "\u5df2\u62b5\u53f0\u5f85\u51fa\u8ca8"));
+                List.of(PURCHASED, DEPOSIT_PAID_DATE, CHECKED_IN, SHIPPING_PROGRESS),
+                List.of("TRUE", "2026-07-01", "TRUE", "\u5df2\u62b5\u53f0\u5f85\u51fa\u8ca8"));
 
         Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.ARRIVED, item.getItemStatus());
         Assertions.assertEquals(com.fy20047.susan.domain.ShippingStatus.READY_TO_SHIP, item.getShippingStatus());
@@ -103,8 +103,8 @@ class SheetSyncServiceTest {
     void syncFromCsvAcceptsMissingReconciledAndArrivedHeadersWhenShippingProgressExists() throws IOException {
         OrderItem item = syncSingleItem(
                 false,
-                List.of(PURCHASED, CHECKED_IN, SHIPPING_PROGRESS),
-                List.of("TRUE", "2026-07-01", "\u5df2\u62b5\u53f0\u5f85\u51fa\u8ca8"));
+                List.of(PURCHASED, DEPOSIT_PAID_DATE, CHECKED_IN, SHIPPING_PROGRESS),
+                List.of("TRUE", "2026-07-01", "TRUE", "\u5df2\u62b5\u53f0\u5f85\u51fa\u8ca8"));
 
         Assertions.assertEquals(false, item.getDepositReconciled());
         Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.ARRIVED, item.getItemStatus());
@@ -112,12 +112,22 @@ class SheetSyncServiceTest {
     }
 
     @Test
-    void syncFromCsvTreatsEitherDepositFieldAsPaid() throws IOException {
+    void syncFromCsvDoesNotTreatConfirmationWithoutDepositDateAsPaid() throws IOException {
         OrderItem item = syncSingleItem(
-                List.of(PURCHASED, CHECKED_IN),
-                List.of("TRUE", "2026-07-01"));
+                List.of(PURCHASED, CHECKED_IN, SHIPPING_PROGRESS),
+                List.of("TRUE", "2026-07-01", "尚未抵台"));
 
-        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.IN_TRANSIT, item.getItemStatus());
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.PENDING_DEPOSIT, item.getItemStatus());
+        Assertions.assertEquals(false, item.getDepositPaid());
+    }
+
+    @Test
+    void syncFromCsvCountsDepositDateAsPaidWithoutAdvancingStatus() throws IOException {
+        OrderItem item = syncSingleItem(
+                List.of(PURCHASED, DEPOSIT_PAID_DATE, SHIPPING_PROGRESS),
+                List.of("TRUE", "2026-07-01", "尚未抵台"));
+
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.PENDING_DEPOSIT, item.getItemStatus());
         Assertions.assertEquals(true, item.getDepositPaid());
     }
 
@@ -158,6 +168,33 @@ class SheetSyncServiceTest {
         Assertions.assertEquals(
                 "https://docs.google.com/spreadsheets/d/" + sheetId + "/export?format=xlsx",
                 source.getSheetUrl());
+    }
+
+    @Test
+    void deleteSyncSourceAlsoDeletesImportedGroups() {
+        OrderGroupRepository orderGroupRepository = mock(OrderGroupRepository.class);
+        SheetSyncSourceRepository sourceRepository = mock(SheetSyncSourceRepository.class);
+        SheetSyncSettingsRepository settingsRepository = mock(SheetSyncSettingsRepository.class);
+        SheetSyncSettings settings = new SheetSyncSettings();
+        settings.setDefaultSourcesInitialized(true);
+        SheetSyncSource source = new SheetSyncSource();
+        source.setId(7L);
+        source.setSourceKey("sheet-old-source");
+        OrderGroup group = new OrderGroup();
+
+        when(settingsRepository.findById(SheetSyncSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));
+        when(sourceRepository.findById(7L)).thenReturn(Optional.of(source));
+        when(orderGroupRepository.findBySourceKey("sheet-old-source")).thenReturn(List.of(group));
+        SheetSyncService service = new SheetSyncService(
+                orderGroupRepository,
+                mock(SheetSyncWriter.class),
+                sourceRepository,
+                settingsRepository);
+
+        Assertions.assertTrue(service.deleteSyncSource(7L));
+
+        verify(orderGroupRepository).deleteAll(List.of(group));
+        verify(sourceRepository).delete(source);
     }
 
     private OrderItem syncSingleItem(List<String> extraHeaders, List<String> extraValues) throws IOException {

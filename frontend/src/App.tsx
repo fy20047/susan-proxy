@@ -235,17 +235,9 @@ export default function App() {
     if (preorderItemFilter === "ALL") {
       return preorderOrders;
     }
-
-    return preorderOrders.reduce<OrderView[]>((acc, order) => {
-      const items = order.items.filter((item) =>
-        matchesPreorderFilters(item, preorderItemFilter)
-      );
-      if (!items.length) {
-        return acc;
-      }
-      acc.push(rebuildOrderView(order, items));
-      return acc;
-    }, []);
+    return preorderOrders.filter((order) =>
+      order.items.some((item) => matchesPreorderFilters(item, preorderItemFilter))
+    );
   }, [preorderOrders, preorderItemFilter]);
 
   const filteredStandardOrders = useMemo(() => {
@@ -253,14 +245,9 @@ export default function App() {
       return standardOrders;
     }
 
-    return standardOrders.reduce<OrderView[]>((acc, order) => {
-      const items = order.items.filter((item) => matchesStandardFilter(item, standardFilter));
-      if (!items.length) {
-        return acc;
-      }
-      acc.push(rebuildOrderView(order, items));
-      return acc;
-    }, []);
+    return standardOrders.filter((order) =>
+      order.items.some((item) => matchesStandardFilter(item, standardFilter))
+    );
   }, [standardOrders, standardFilter]);
 
   const quickOrderEligibleOrders = useMemo(
@@ -401,8 +388,6 @@ export default function App() {
     return latest.toLocaleString("zh-TW", { hour12: false });
   }, [orders]);
 
-  const showPreorderStatus = preorderItemFilter !== "ALL";
-  const showStandardStatus = standardFilter !== "ALL";
   const preorderEmptyLabel =
     preorderItemFilter === "ALL"
       ? "全部"
@@ -1058,7 +1043,6 @@ ${paymentItemsText}
                     <OrderCard
                       key={order.id}
                       order={order}
-                      showStatus={showPreorderStatus}
                       quickOrderSelectable={hasQuickOrderItems(order)}
                       quickOrderSelected={selectedQuickOrderIds.includes(order.id)}
                       onQuickOrderSelectChange={handleQuickOrderSelectChange}
@@ -1108,7 +1092,6 @@ ${paymentItemsText}
                     <OrderCard
                       key={order.id}
                       order={order}
-                      showStatus={showStandardStatus}
                       quickOrderSelectable={hasQuickOrderItems(order)}
                       quickOrderSelected={selectedQuickOrderIds.includes(order.id)}
                       onQuickOrderSelectChange={handleQuickOrderSelectChange}
@@ -1743,7 +1726,7 @@ function hasQuickOrderItems(order: OrderView): boolean {
 }
 
 function isQuickOrderItem(item: OrderView["items"][number]): boolean {
-  return item.shippingStatusCode === "READY_TO_SHIP";
+  return item.statusCode === "ARRIVED" || item.statusCode === "PREORDER_ARRIVED";
 }
 
 function isPendingPaymentItem(item: OrderView["items"][number]): boolean {

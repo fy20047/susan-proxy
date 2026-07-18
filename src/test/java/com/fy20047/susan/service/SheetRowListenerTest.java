@@ -2,7 +2,6 @@ package com.fy20047.susan.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
@@ -155,6 +154,7 @@ class SheetRowListenerTest {
     void usesShippingProgressForReadyToShipStatus() {
         List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> {
             row.setPurchased("TRUE");
+            row.setDepositPaidDate("2026-07-01");
             row.setCheckedIn("2026-07-01");
             row.setShippingProgress("已抵台待出貨");
         });
@@ -173,6 +173,7 @@ class SheetRowListenerTest {
 
         List<OrderItem> savedItems = readSingleRow(headers, row -> {
             row.setPurchased("TRUE");
+            row.setDepositPaidDate("2026-07-01");
             row.setCheckedIn("2026-07-01");
             row.setShippingProgress("已抵台待出貨");
         });
@@ -223,7 +224,78 @@ class SheetRowListenerTest {
         Assertions.assertTrue(listener.getWarnings().stream()
                 .anyMatch(warning -> warning.message().contains("付定日與對只有其中一欄")));
         Assertions.assertTrue(listener.getWarnings().stream()
-                .anyMatch(warning -> warning.message().contains("已抵台可出貨")));
+                .anyMatch(warning -> warning.message().contains("訂金資訊不完整")));
+    }
+
+    @Test
+    void usesDepositDateForPaidAmountWithoutAdvancingStatus() {
+        List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> {
+            row.setPurchased("TRUE");
+            row.setDepositPaidDate("2026-07-01");
+            row.setShippingProgress("尚未抵台");
+        });
+
+        OrderItem item = savedItems.getFirst();
+        Assertions.assertEquals(true, item.getDepositPaid());
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.PENDING_DEPOSIT, item.getItemStatus());
+    }
+
+    @Test
+    void doesNotCountConfirmationWithoutDepositDateAsPaid() {
+        List<OrderItem> savedItems = readSingleRow(fieldSalesHeaderMap(), row -> {
+            row.setPurchased("TRUE");
+            row.setCheckedIn("2026-07-01");
+            row.setShippingProgress("尚未抵台");
+        });
+
+        OrderItem item = savedItems.getFirst();
+        Assertions.assertEquals(false, item.getDepositPaid());
+        Assertions.assertEquals(com.fy20047.susan.domain.ItemStatus.PENDING_DEPOSIT, item.getItemStatus());
+    }
+
+    @Test
+    void trimsBlankBalanceDate() {
+        List<OrderItem> savedItems = readSingleRow(
+                fieldSalesHeaderMap(),
+                row -> row.setBalanceDueDate("   "));
+
+        Assertions.assertEquals("", savedItems.getFirst().getBalanceDueDate());
+    }
+
+    @Test
+    void keepsMaximumBonusForSameBuyerInGroup() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        when(writer.createGroup(any())).thenReturn(1L);
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("場販測試團");
+        listener.invokeHeadMap(fieldSalesHeaderMap(), context);
+
+        SheetRowDto first = baseRow();
+        first.setBonus("2");
+        listener.invoke(first, context);
+
+        SheetRowDto second = baseRow();
+        second.setBonus("5");
+        listener.invoke(second, context);
+
+        SheetRowDto third = baseRow();
+        third.setBonus("3");
+        listener.invoke(third, context);
+        listener.doAfterAllAnalysed(context);
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        ArgumentCaptor<Map<Long, Integer>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(writer).updateGroupBonuses(captor.capture());
+        Assertions.assertEquals(5, captor.getValue().get(1L));
     }
 
     @Test
@@ -246,6 +318,66 @@ class SheetRowListenerTest {
         verify(writer, never()).prepareReplace(any(), any());
         verify(writer, never()).createGroup(any());
         verify(writer, never()).saveItems(anyList());
+    }
+
+    @Test
+    void clearsExistingGroupsWhenVisibleSheetIsEmpty() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("空白測試團");
+
+        listener.invokeHeadMap(headerMapWithoutJpyPrice(), context);
+        listener.doAfterAllAnalysed(context);
+
+        verify(writer).prepareReplace("空白測試團", "standard");
+        Assertions.assertTrue(listener.getProcessedSheets().contains("空白測試團"));
+    }
+
+    @Test
+    void keepsLegacyStandardStatusRulesWhenShippingProgressColumnIsAbsent() {
+        List<OrderItem> savedItems = readSingleRow(headerMapWithoutJpyPrice(), row -> {
+            row.setPurchased("TRUE");
+            row.setReconciled("TRUE");
+            row.setArrived("TRUE");
+        });
+
+        Assertions.assertEquals(
+                com.fy20047.susan.domain.ItemStatus.ARRIVED,
+                savedItems.getFirst().getItemStatus());
+    }
+
+    @Test
+    void reportsRowConversionExceptionsToAdminWarnings() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "standard",
+                GroupSourceType.STANDARD,
+                null,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("錯誤測試團");
+
+        listener.invokeHeadMap(headerMapWithoutJpyPrice(), context);
+        listener.onException(new IllegalArgumentException("#REF!"), context);
+        listener.doAfterAllAnalysed(context);
+
+        Assertions.assertTrue(listener.getWarnings().stream()
+                .anyMatch(warning -> warning.message().contains("#REF!")
+                        && warning.message().contains("未匯入")));
+        verify(writer, never()).prepareReplace(any(), any());
     }
 
     @Test
@@ -285,6 +417,45 @@ class SheetRowListenerTest {
         verify(writer).prepareReplace("受注測試團", "preorder");
         verify(writer).createGroup(any());
         verify(writer).saveItems(anyList());
+    }
+
+    @Test
+    void acceptsLegacyNotArrivedValueInNewPreorderProgress() {
+        SheetSyncWriter writer = mock(SheetSyncWriter.class);
+        when(writer.createGroup(any())).thenReturn(1L);
+        List<OrderItem> savedItems = new java.util.ArrayList<>();
+        doAnswer(invocation -> {
+            savedItems.addAll(invocation.getArgument(0));
+            return null;
+        }).when(writer).saveItems(anyList());
+        Map<String, SheetSyncSheetConfig> sheetConfigs = new LinkedHashMap<>();
+        sheetConfigs.put("受注相容測試團", new SheetSyncSheetConfig(true, true));
+        SheetRowListener listener = new SheetRowListener(
+                writer,
+                "preorder",
+                GroupSourceType.PREORDER,
+                sheetConfigs,
+                true,
+                100,
+                10,
+                64,
+                16);
+        AnalysisContext context = mockContext("受注相容測試團");
+        listener.invokeHeadMap(fieldSalesHeaderMap(), context);
+
+        SheetRowDto row = baseRow();
+        row.setPurchased("TRUE");
+        row.setDepositPaidDate("2026-07-01");
+        row.setCheckedIn("TRUE");
+        row.setShippingProgress("尚未抵台");
+        listener.invoke(row, context);
+        listener.doAfterAllAnalysed(context);
+
+        Assertions.assertEquals(
+                com.fy20047.susan.domain.ItemStatus.PREORDER_PURCHASED,
+                savedItems.getFirst().getItemStatus());
+        Assertions.assertFalse(listener.getWarnings().stream()
+                .anyMatch(warning -> warning.message().contains("無法辨識")));
     }
 
     @Test

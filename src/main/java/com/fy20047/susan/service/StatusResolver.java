@@ -36,7 +36,7 @@ public final class StatusResolver {
             boolean isPurchased,
             String depositPaidDate,
             boolean isCheckedIn) {
-        return determineStandard(itemName, isPurchased, !isBlank(depositPaidDate) || isCheckedIn, ShippingStatus.NOT_ARRIVED);
+        return determineStandard(itemName, isPurchased, !isBlank(depositPaidDate) && isCheckedIn, ShippingStatus.NOT_ARRIVED);
     }
 
     public static ItemStatus determineStandard(
@@ -47,11 +47,11 @@ public final class StatusResolver {
         if (isBlank(itemName)) {
             return ItemStatus.REGISTERED;
         }
-        if (!isDepositPaid) {
-            return ItemStatus.PENDING_DEPOSIT;
-        }
         if (!isPurchased) {
             return ItemStatus.PENDING_PURCHASE;
+        }
+        if (!isDepositPaid) {
+            return ItemStatus.PENDING_DEPOSIT;
         }
         if (shippingStatus == ShippingStatus.SHIPPED) {
             return ItemStatus.SHIPPED;
@@ -76,6 +76,9 @@ public final class StatusResolver {
             String rawShippingProgress,
             boolean isArrived,
             boolean isShipped) {
+        if (isShipped) {
+            return ShippingStatus.SHIPPED;
+        }
         if (!isBlank(rawShippingProgress)) {
             return switch (normalize(rawShippingProgress)) {
                 case "已出貨" -> ShippingStatus.SHIPPED;
@@ -84,7 +87,7 @@ public final class StatusResolver {
                 default -> ShippingStatus.NOT_ARRIVED;
             };
         }
-        return determineShipping(isArrived, isShipped);
+        return determineShipping(isArrived, false);
     }
 
     public static ShippingStatus determinePreorderShipping(String rawStatus, boolean isShipped) {
@@ -159,11 +162,11 @@ public final class StatusResolver {
         if (isBlank(itemName)) {
             return ItemStatus.PREORDER_REGISTERED;
         }
-        if (!isDepositPaid) {
-            return ItemStatus.PREORDER_PENDING_DEPOSIT;
-        }
         if (!isPurchased) {
             return ItemStatus.PREORDER_PENDING_PURCHASE;
+        }
+        if (!isDepositPaid) {
+            return ItemStatus.PREORDER_PENDING_DEPOSIT;
         }
         if (isShipped) {
             return ItemStatus.PREORDER_SHIPPED;

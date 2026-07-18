@@ -184,10 +184,15 @@ public class SheetSyncService {
             return false;
         }
         ensureDefaultSourcesInitialized();
-        if (!sheetSyncSourceRepository.existsById(sourceId)) {
+        SheetSyncSource source = sheetSyncSourceRepository.findById(sourceId).orElse(null);
+        if (source == null) {
             return false;
         }
-        sheetSyncSourceRepository.deleteById(sourceId);
+        List<OrderGroup> sourceGroups = orderGroupRepository.findBySourceKey(source.getSourceKey());
+        if (!sourceGroups.isEmpty()) {
+            orderGroupRepository.deleteAll(sourceGroups);
+        }
+        sheetSyncSourceRepository.delete(source);
         return true;
     }
 
@@ -211,6 +216,7 @@ public class SheetSyncService {
         boolean hasQueuedColumn = containsHeader(headerIndexMap, QUEUED_HEADER);
         boolean hasLegacyQueuedColumn = containsHeader(headerIndexMap, LEGACY_QUEUED_HEADER);
         boolean hasPreorderStatusColumn = containsHeader(headerIndexMap, PREORDER_STATUS_HEADER);
+        boolean hasShippingProgressColumn = containsHeader(headerIndexMap, SHIPPING_PROGRESS_HEADER);
         boolean hasNotCheckedInColumn = containsHeader(headerIndexMap, NOT_CHECKED_IN_HEADER);
         LocalDateTime syncTimestamp = LocalDateTime.now();
         Map<String, OrderGroup> groupByBuyer = new LinkedHashMap<>();
@@ -251,9 +257,10 @@ public class SheetSyncService {
             item.setBalanceDueDate(getValue(record, headerIndexMap, BALANCE_DUE_DATE_HEADER));
             String depositPaidDate = getValue(record, headerIndexMap, DEPOSIT_PAID_DATE_HEADER);
             String depositConfirmation = getValue(record, headerIndexMap, CHECKED_IN_HEADER);
-            boolean isDepositPaid = !isBlank(depositPaidDate) || !isBlank(depositConfirmation);
+            boolean hasDepositPaidDate = !isBlank(depositPaidDate);
+            boolean isDepositConfirmed = hasDepositPaidDate && !isBlank(depositConfirmation);
             item.setDepositPaidDate(depositPaidDate);
-            item.setDepositPaid(isDepositPaid);
+            item.setDepositPaid(hasDepositPaidDate);
             item.setDepositReconciled(parseBoolean(getValue(record, headerIndexMap, RECONCILED_HEADER)));
             boolean isPurchased = parseBoolean(getValue(record, headerIndexMap, PURCHASED_HEADER));
             item.setPurchased(isPurchased);
@@ -269,24 +276,40 @@ public class SheetSyncService {
             item.setQuantity(parseInteger(getValue(record, headerIndexMap, QUANTITY_HEADER), 1));
             item.setJpyPrice(parseInteger(getValue(record, headerIndexMap, JPY_PRICE_HEADER), null));
 
-            if (hasPreorderStatusColumn) {
-                boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
-                String preorderStatus = getValue(record, headerIndexMap, PREORDER_STATUS_HEADER);
-                String shippingProgress = getValue(record, headerIndexMap, SHIPPING_PROGRESS_HEADER);
+            boolean isArrived = parseBoolean(getValue(record, headerIndexMap, ARRIVED_HEADER));
+            boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
+            String preorderStatus = getValue(record, headerIndexMap, PREORDER_STATUS_HEADER);
+            String shippingProgress = getValue(record, headerIndexMap, SHIPPING_PROGRESS_HEADER);
+            boolean hasLegacyStatusValue = hasPreorderStatusColumn
+                    ? !isBlank(preorderStatus) || isShipped
+                    : item.getDepositReconciled() || isArrived || isShipped;
+            boolean useLegacyStatus = !hasShippingProgressColumn
+                    || (isBlank(shippingProgress) && hasLegacyStatusValue);
+
+            if (useLegacyStatus) {
+                if (hasPreorderStatusColumn) {
+                    item.setItemStatus(StatusResolver.determinePreorder(preorderStatus, isShipped));
+                    item.setShippingStatus(StatusResolver.determinePreorderShipping(preorderStatus, isShipped));
+                } else {
+                    item.setItemStatus(StatusResolver.determineLegacy(
+                            item.getDepositReconciled(),
+                            isPurchased,
+                            isArrived,
+                            isShipped));
+                    item.setShippingStatus(StatusResolver.determineShipping(isArrived, isShipped));
+                }
+            } else if (hasPreorderStatusColumn) {
                 item.setItemStatus(StatusResolver.determinePreorder(
                         itemName,
                         isPurchased,
-                        isDepositPaid,
+                        isDepositConfirmed,
                         shippingProgress,
                         preorderStatus,
                         isShipped));
                 item.setShippingStatus(StatusResolver.determinePreorderShipping(shippingProgress, preorderStatus, isShipped));
             } else {
-                boolean isArrived = parseBoolean(getValue(record, headerIndexMap, ARRIVED_HEADER));
-                boolean isShipped = parseBoolean(getValue(record, headerIndexMap, SHIPPED_HEADER));
-                String shippingProgress = getValue(record, headerIndexMap, SHIPPING_PROGRESS_HEADER);
                 var shippingStatus = StatusResolver.determineStandardShipping(shippingProgress, isArrived, isShipped);
-                item.setItemStatus(StatusResolver.determineStandard(itemName, isPurchased, isDepositPaid, shippingStatus));
+                item.setItemStatus(StatusResolver.determineStandard(itemName, isPurchased, isDepositConfirmed, shippingStatus));
                 item.setShippingStatus(shippingStatus);
             }
 
@@ -309,7 +332,11 @@ public class SheetSyncService {
 
     public SyncRunResult syncFromGoogleSheets() {
         List<SyncSource> sources = resolveSyncSources();
-        return syncSources(sources);
+        SyncRunResult result = syncSources(sources);
+        if (result.status() == SyncRunStatus.SYNCED && sheetSyncSourceRepository != null) {
+            deleteOrphanedSourceGroups(sources);
+        }
+        return result;
     }
 
     public SyncRunResult syncGoogleSheetSource(Long sourceId) {
@@ -682,6 +709,29 @@ public class SheetSyncService {
 
         if (!toDelete.isEmpty()) {
             orderGroupRepository.deleteAll(toDelete);
+        }
+    }
+
+    private void deleteOrphanedSourceGroups(List<SyncSource> activeSources) {
+        if (activeSources == null || activeSources.isEmpty()) {
+            return;
+        }
+        Set<String> activeSourceKeys = activeSources.stream()
+                .map(SyncSource::sourceKey)
+                .filter(sourceKey -> sourceKey != null && !sourceKey.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        List<OrderGroup> orphanedGroups = orderGroupRepository.findAll().stream()
+                .filter(group -> {
+                    String sourceKey = group.getSourceKey();
+                    return sourceKey != null
+                            && !sourceKey.isBlank()
+                            && !"csv".equals(sourceKey)
+                            && !activeSourceKeys.contains(sourceKey);
+                })
+                .toList();
+        if (!orphanedGroups.isEmpty()) {
+            orderGroupRepository.deleteAll(orphanedGroups);
+            log.info("Deleted orphaned sheet groups count={}", orphanedGroups.size());
         }
     }
 

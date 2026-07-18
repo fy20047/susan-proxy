@@ -42,7 +42,7 @@ export type ShippingStatusCode = "NOT_ARRIVED" | "READY_TO_SHIP" | "SHIPPED";
 
 export type StandardOrderStatus =
   | "尚未購入"
-  | "待付款"
+  | "待付定"
   | "轉送中"
   | "可出貨"
   | "已出貨";

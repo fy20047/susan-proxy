@@ -20,7 +20,7 @@ export function buildOrderView(group: ApiOrderGroup): OrderView {
     const rawBalanceDueDate = item.balanceDueDate ?? "";
     const normalizedBalanceDueDate = rawBalanceDueDate.trim();
     const isCheckedIn = item.checkedIn ?? false;
-    const isDepositPaid = item.depositPaid ?? normalizedDepositPaidDate.length > 0;
+    const isDepositPaid = normalizedDepositPaidDate.length > 0;
 
     return {
       id: item.id,
@@ -84,8 +84,11 @@ export function rebuildOrderView(order: OrderView, items: OrderItemView[] = orde
     0
   );
   const balanceAmount = items.reduce((sum, item) => sum + item.balanceAmount, 0);
+  const purchasedItems = items.filter((item) => item.isPurchased);
   const isBalancePaid =
-    items.length > 0 && items.every((item) => item.isBalancePaid);
+    items === order.items
+      ? purchasedItems.length > 0 && purchasedItems.every((item) => item.isBalancePaid)
+      : order.isBalancePaid;
 
   if (order.sourceType === "PREORDER") {
     const summaryStatusCode = derivePreorderOrderStatusCode(items);

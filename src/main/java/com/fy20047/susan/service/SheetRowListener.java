@@ -3,6 +3,7 @@ package com.fy20047.susan.service;
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.event.AnalysisEventListener;
+import com.alibaba.excel.exception.ExcelDataConvertException;
 import com.fy20047.susan.domain.GroupSourceType;
 import com.fy20047.susan.domain.ItemStatus;
 import com.fy20047.susan.domain.OrderGroup;
@@ -32,6 +33,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private static final String LEGACY_QUEUED_HEADER = resolveExcelHeader("legacyQueued");
     private static final String PREORDER_STATUS_HEADER = resolveExcelHeader("preorderStatus");
     private static final String NOT_CHECKED_IN_HEADER = resolveExcelHeader("notCheckedIn");
+    private static final String SHIPPING_PROGRESS_HEADER = resolveExcelHeader("shippingProgress");
 
     private final SheetSyncWriter sheetSyncWriter;
     private final String sourceKey;
@@ -64,6 +66,8 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean hasLegacyQueuedColumn = false;
     private boolean hasPreorderStatusColumn = false;
     private boolean hasNotCheckedInColumn = false;
+    private boolean hasShippingProgressColumn = false;
+    private int parseErrorCount = 0;
 
     public SheetRowListener(SheetSyncWriter sheetSyncWriter) {
         this(sheetSyncWriter, null, GroupSourceType.STANDARD, null, false, 0, 200, 64, 16);
@@ -156,6 +160,8 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         hasLegacyQueuedColumn = false;
         hasPreorderStatusColumn = false;
         hasNotCheckedInColumn = false;
+        hasShippingProgressColumn = false;
+        parseErrorCount = 0;
         validSheet = false;
         skipCurrentSheet = shouldSkipSheet(currentSheetName);
 
@@ -185,6 +191,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         hasLegacyQueuedColumn = containsHeader(headers, LEGACY_QUEUED_HEADER);
         hasPreorderStatusColumn = containsHeader(headers, PREORDER_STATUS_HEADER);
         hasNotCheckedInColumn = containsHeader(headers, NOT_CHECKED_IN_HEADER);
+        hasShippingProgressColumn = containsHeader(headers, SHIPPING_PROGRESS_HEADER);
         currentSourceType = resolveCurrentSourceType(resolveSheetConfig(currentSheetName), hasPreorderStatusColumn);
         validSheet = true;
     }
@@ -261,12 +268,13 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             item.setBalanceDueDate(safeString(row.getBalanceDueDate()));
             String depositPaidDate = safeString(row.getDepositPaidDate());
             String depositConfirmation = safeString(row.getCheckedIn());
-            boolean isDepositPaid = !depositPaidDate.isEmpty() || !depositConfirmation.isEmpty();
+            boolean hasDepositPaidDate = !depositPaidDate.isEmpty();
+            boolean hasCompletePaymentFields = hasDepositPaidDate && !depositConfirmation.isEmpty();
             if (depositPaidDate.isEmpty() != depositConfirmation.isEmpty()) {
-                addWarning(context, buyerNickname, itemName, "付定日與對只有其中一欄有內容，已視為已付訂金。");
+                addWarning(context, buyerNickname, itemName, "付定日與對只有其中一欄有內容，貨況不會視為已完成付款。");
             }
             item.setDepositPaidDate(depositPaidDate);
-            item.setDepositPaid(isDepositPaid);
+            item.setDepositPaid(hasDepositPaidDate);
             item.setDepositReconciled(parseBoolean(row.getReconciled()));
             boolean isPurchased = parseBoolean(row.getPurchased());
             item.setPurchased(isPurchased);
@@ -282,9 +290,16 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             item.setQuantity(defaultInt(row.getQuantity(), 1));
             item.setJpyPrice(row.getJpyPrice());
             ShippingStatus shippingStatus = resolveShippingStatus(row);
-            item.setItemStatus(resolveItemStatus(row, itemName, isPurchased, isDepositPaid, shippingStatus));
+            item.setItemStatus(resolveItemStatus(row, itemName, isPurchased, hasCompletePaymentFields, shippingStatus));
             item.setShippingStatus(shippingStatus);
-            validateShippingProgress(row, context, buyerNickname, itemName, isPurchased, isDepositPaid, shippingStatus);
+            validateShippingProgress(
+                    row,
+                    context,
+                    buyerNickname,
+                    itemName,
+                    isPurchased,
+                    hasCompletePaymentFields,
+                    shippingStatus);
 
             if (streamByBuyer) {
                 OrderGroup groupRef = new OrderGroup();
@@ -299,9 +314,11 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
                 group.addItem(item);
             }
         } catch (Exception e) {
+            parseErrorCount += 1;
             int rowIndex = context.readRowHolder() == null ? -1 : context.readRowHolder().getRowIndex();
             int displayRow = rowIndex >= 0 ? rowIndex + 1 : -1;
             log.warn("Sheet {} row parse/save failed (rowIndex={}, rowCount={})", currentSheetName, displayRow, rowCount, e);
+            addWarning(context, "", "", "此列處理失敗，未匯入：" + conciseExceptionMessage(e));
         }
     }
 
@@ -320,14 +337,20 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
                 sheetSyncWriter.updateGroupBonuses(bonusByGroupId);
             }
             if (!hasData) {
-                return;
+                if (parseErrorCount == 0 && !preparedReplace) {
+                    sheetSyncWriter.prepareReplace(currentSheetName, sourceKey);
+                    preparedReplace = true;
+                }
             }
         } else {
             if (groupByBuyer.isEmpty()) {
-                return;
+                if (parseErrorCount == 0) {
+                    sheetSyncWriter.prepareReplace(currentSheetName, sourceKey);
+                }
+            } else {
+                sheetSyncWriter.replaceGroups(currentSheetName, sourceKey, groupByBuyer.values());
+                totalGroupsSaved += groupByBuyer.size();
             }
-            sheetSyncWriter.replaceGroups(currentSheetName, sourceKey, groupByBuyer.values());
-            totalGroupsSaved += groupByBuyer.size();
         }
 
         log.info("Sheet {} processed rows={} groupsSaved={} sourceType={}",
@@ -337,9 +360,11 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
 
     @Override
     public void onException(Exception exception, AnalysisContext context) {
+        parseErrorCount += 1;
         int rowIndex = context.readRowHolder() == null ? -1 : context.readRowHolder().getRowIndex();
         int displayRow = rowIndex >= 0 ? rowIndex + 1 : -1;
         log.warn("Sheet {} row parse exception (rowIndex={}, rowCount={})", currentSheetName, displayRow, rowCount, exception);
+        warnings.add(toConversionWarning(exception, displayRow));
     }
 
     public Set<String> getProcessedSheets() {
@@ -364,9 +389,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             ShippingStatus shippingStatus) {
         String shippingProgress = safeString(row.getShippingProgress());
         if (!shippingProgress.isEmpty()) {
-            if ("已抵台可出貨".equals(shippingProgress.trim())) {
-                addWarning(context, buyerNickname, itemName, "出貨進度「已抵台可出貨」應改為「已抵台待出貨」，已暫時視為可出貨。");
-            } else if (!isKnownShippingProgress(shippingProgress, currentSourceType)) {
+            if (!isKnownShippingProgress(shippingProgress, currentSourceType)) {
                 addWarning(context, buyerNickname, itemName, "出貨進度值無法辨識：「" + shippingProgress + "」，已暫時視為尚未抵台。");
             }
 
@@ -375,7 +398,7 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
                         parseBoolean(row.getArrived()),
                         parseBoolean(row.getShipped()));
                 if ((parseBoolean(row.getArrived()) || parseBoolean(row.getShipped())) && legacyStatus != shippingStatus) {
-                    addWarning(context, buyerNickname, itemName, "出貨進度與舊欄位「抵台 / 出貨狀態」不一致，已優先採用出貨進度。");
+                    addWarning(context, buyerNickname, itemName, "出貨進度與舊欄位「抵台 / 出貨狀態」不一致，已依新舊欄位相容規則合併。");
                 }
             } else {
                 String preorderStatus = safeString(row.getPreorderStatus());
@@ -400,10 +423,18 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
     private boolean isKnownShippingProgress(String rawValue, GroupSourceType sourceType) {
         String value = rawValue == null ? "" : rawValue.trim();
         if (sourceType == GroupSourceType.PREORDER) {
-            return Set.of("已下單待發貨", "官方已發貨", "已抵台待出貨", "已抵台可出貨", "已出貨")
+            return Set.of(
+                            "已下單待發貨",
+                            "尚未抵台",
+                            "未抵台",
+                            "官方已發貨",
+                            "已抵台待出貨",
+                            "已抵台可出貨",
+                            "已抵台",
+                            "已出貨")
                     .contains(value);
         }
-        return Set.of("尚未抵台", "未抵台", "已抵台待出貨", "已抵台可出貨", "已出貨")
+        return Set.of("尚未抵台", "未抵台", "已抵台待出貨", "已抵台可出貨", "已抵台", "已出貨")
                 .contains(value);
     }
 
@@ -445,6 +476,22 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
             boolean isPurchased,
             boolean isDepositPaid,
             ShippingStatus shippingStatus) {
+        boolean hasShippingProgressValue = !safeString(row.getShippingProgress()).isEmpty();
+        boolean hasLegacyStatusValue = currentSourceType == GroupSourceType.PREORDER
+                ? !safeString(row.getPreorderStatus()).isEmpty() || parseBoolean(row.getShipped())
+                : parseBoolean(row.getReconciled())
+                        || parseBoolean(row.getArrived())
+                        || parseBoolean(row.getShipped());
+        if (!hasShippingProgressColumn || (!hasShippingProgressValue && hasLegacyStatusValue)) {
+            if (currentSourceType == GroupSourceType.PREORDER) {
+                return StatusResolver.determinePreorder(row.getPreorderStatus(), parseBoolean(row.getShipped()));
+            }
+            return StatusResolver.determineLegacy(
+                    parseBoolean(row.getReconciled()),
+                    isPurchased,
+                    parseBoolean(row.getArrived()),
+                    parseBoolean(row.getShipped()));
+        }
         if (currentSourceType == GroupSourceType.PREORDER) {
             return StatusResolver.determinePreorder(
                     itemName,
@@ -456,6 +503,72 @@ public class SheetRowListener extends AnalysisEventListener<SheetRowDto> {
         }
 
         return StatusResolver.determineStandard(itemName, isPurchased, isDepositPaid, shippingStatus);
+    }
+
+    private SyncWarning toConversionWarning(Exception exception, int fallbackDisplayRow) {
+        int displayRow = fallbackDisplayRow;
+        String message = "此列欄位格式無法解析，整列未匯入：" + conciseExceptionMessage(exception);
+        if (exception instanceof ExcelDataConvertException conversionException) {
+            if (conversionException.getRowIndex() != null && conversionException.getRowIndex() >= 0) {
+                displayRow = conversionException.getRowIndex() + 1;
+            }
+            int columnNumber = conversionException.getColumnIndex() == null
+                    ? -1
+                    : conversionException.getColumnIndex() + 1;
+            String headerName = resolveConversionHeader(conversionException);
+            String rawValue = resolveConversionValue(conversionException);
+            String columnLabel = headerName.isEmpty()
+                    ? (columnNumber > 0 ? "第 " + columnNumber + " 欄" : "未知欄位")
+                    : "欄位「" + headerName + "」";
+            String valueLabel = rawValue.isEmpty() ? "" : "，原始值「" + rawValue + "」";
+            message = columnLabel + valueLabel + "無法解析，整列未匯入。";
+        }
+        return new SyncWarning(sourceKey, currentSheetName, displayRow, "", "", message);
+    }
+
+    private String resolveConversionHeader(ExcelDataConvertException exception) {
+        if (exception.getExcelContentProperty() == null
+                || exception.getExcelContentProperty().getField() == null) {
+            return "";
+        }
+        ExcelProperty property = exception.getExcelContentProperty().getField().getAnnotation(ExcelProperty.class);
+        if (property == null || property.value().length == 0) {
+            return exception.getExcelContentProperty().getField().getName();
+        }
+        return property.value()[0].trim();
+    }
+
+    private String resolveConversionValue(ExcelDataConvertException exception) {
+        if (exception.getCellData() == null) {
+            return "";
+        }
+        try {
+            if (exception.getCellData().getStringValue() != null) {
+                return exception.getCellData().getStringValue().trim();
+            }
+            if (exception.getCellData().getNumberValue() != null) {
+                return exception.getCellData().getNumberValue().toPlainString();
+            }
+            if (exception.getCellData().getBooleanValue() != null) {
+                return exception.getCellData().getBooleanValue().toString();
+            }
+            if (exception.getCellData().getData() != null) {
+                return exception.getCellData().getData().toString().trim();
+            }
+        } catch (Exception ignored) {
+            // Fall back to the exception message below.
+        }
+        return "";
+    }
+
+    private String conciseExceptionMessage(Exception exception) {
+        if (exception == null) {
+            return "未知錯誤";
+        }
+        String message = exception.getMessage();
+        return message == null || message.isBlank()
+                ? exception.getClass().getSimpleName()
+                : message.trim();
     }
 
     private ShippingStatus resolveShippingStatus(SheetRowDto row) {
